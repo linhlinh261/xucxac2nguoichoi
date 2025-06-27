@@ -361,7 +361,7 @@
                 }
                 el.innerHTML = `
                     <h3 class="text-lg font-bold">${player.name || 'Người chơi'}</h3>
-                    <p class="text-2xl font-black text-indigo-600">${player.score || 0} Điểm</p>
+                    <p class="text-2xl font-black text-indigo-600">${Number.isFinite(player.score) ? player.score : 0} Điểm</p>
                     ${player.bet ? `<p class="mt-1">Đã cược: <span class="font-bold text-xl">${player.bet}</span></p>` : ''}
                     ${rpsDisplay}
                 `;
@@ -400,8 +400,10 @@
                      if (myPlayerIndex === 0) continueBtn.classList.remove('hidden');
                      else gameStatus.textContent = 'Hòa! Đang chờ chủ phòng chơi lại...';
                  } else {
-                     const winnerName = gameState.players[winnerId].name;
-                     rpsResultText.innerHTML = `${gameState.players[0].name} ra ${rpsMap[gameState.players[0].rpsChoice]}, ${gameState.players[1].name} ra ${rpsMap[gameState.players[1].rpsChoice]}. <br> <span class="text-green-600">${winnerName} thắng và đi trước!</span>`;
+                     const winnerName = gameState.players[winnerId]?.name || `Người chơi ${winnerId + 1}`;
+                     const p1Name = gameState.players[0]?.name || 'Người chơi 1';
+                     const p2Name = gameState.players[1]?.name || 'Người chơi 2';
+                     rpsResultText.innerHTML = `${p1Name} ra ${rpsMap[gameState.players[0].rpsChoice]}, ${p2Name} ra ${rpsMap[gameState.players[1].rpsChoice]}. <br> <span class="text-green-600">${winnerName} thắng và đi trước!</span>`;
                      if (myPlayerIndex === winnerId) continueBtn.classList.remove('hidden');
                      else gameStatus.textContent = `Đang chờ ${winnerName} tiếp tục...`;
                  }
@@ -494,20 +496,22 @@
              }
         });
         
+        // FIX: Corrected the logic to wait for the second player's bet.
         async function placeBet(number) {
             const opponentIndex = 1 - myPlayerIndex;
             const updates = {
                 [`players.${myPlayerIndex}.bet`]: number,
                 turn: opponentIndex
             };
-            if (gameState.players[opponentIndex]?.bet !== null) {
+            
+            // Check if the opponent object exists and their bet has been placed.
+            if (gameState.players[opponentIndex] && gameState.players[opponentIndex].bet !== null) {
                 updates.status = 'rolling';
                 updates.turn = null;
             }
             await updateDoc(doc(db, roomsCollectionPath, `room-${currentRoomId}`), updates);
         }
 
-        // FIX: Use a transaction to make dice rolling safer
         async function rollDice() {
             if (myPlayerIndex !== 0) return;
             const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
@@ -519,7 +523,6 @@
                     
                     const currentRoomData = roomDoc.data();
                     if (!currentRoomData.players[0] || !currentRoomData.players[1]) {
-                        console.log("Thiếu người chơi, hủy tung xúc xắc.");
                         return;
                     }
 
@@ -530,22 +533,20 @@
                     const p1 = currentRoomData.players[0];
                     const p2 = currentRoomData.players[1];
                     
-                    const p1Score = p1.score || 0;
-                    const p2Score = p2.score || 0;
+                    const p1Score = Number.isFinite(p1.score) ? p1.score : 0;
+                    const p2Score = Number.isFinite(p2.score) ? p2.score : 0;
 
                     let p1Won = p1.bet === total;
                     let p2Won = p2.bet === total;
 
-                    const updates = {
+                    transaction.update(roomRef, {
                         diceFaces: [die1, die2],
                         diceResult: total,
                         status: 'results',
                         'players.0.score': p1Score + (p1Won ? 1 : 0),
                         'players.1.score': p2Score + (p2Won ? 1 : 0),
                         roundWinner: p1Won && p2Won ? -1 : (p1Won ? 0 : (p2Won ? 1 : null))
-                    };
-                    
-                    transaction.update(roomRef, updates);
+                    });
                 });
             } catch (e) {
                 console.error("Giao dịch tung xúc xắc thất bại: ", e);
@@ -556,7 +557,6 @@
             await updatePlayerState('wantsRematch', true);
         });
         
-        // FIX: Use a transaction to safely reset the game
         async function checkAndResetForRematch() {
             if (
                 gameState.status === 'results' &&
@@ -582,8 +582,8 @@
                         const p2 = roomData.players[1];
 
                         const newPlayers = [
-                            { id: p1.id, name: p1.name, score: p1.score, rpsChoice: null, bet: null, wantsRematch: false },
-                            { id: p2.id, name: p2.name, score: p2.score, rpsChoice: null, bet: null, wantsRematch: false }
+                            { id: p1.id, name: p1.name, score: Number.isFinite(p1.score) ? p1.score : 0, rpsChoice: null, bet: null, wantsRematch: false },
+                            { id: p2.id, name: p2.name, score: Number.isFinite(p2.score) ? p2.score : 0, rpsChoice: null, bet: null, wantsRematch: false }
                         ];
 
                         transaction.update(roomRef, {
@@ -676,7 +676,7 @@
             });
             
             try {
-                 if(auth.currentUser) return; // Already signed in
+                 if(auth.currentUser) return;
                  await signInAnonymously(auth);
             } catch (error) {
                  console.error("Lỗi đăng nhập ẩn danh:", error);
