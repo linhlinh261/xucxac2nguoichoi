@@ -195,10 +195,8 @@
                     const newPlayers = roomData.players.filter(p => p && p.id !== userId);
                     
                     if (newPlayers.length === 0) {
-                        // If room becomes empty, delete it
                         transaction.delete(roomRef);
                     } else {
-                        // Otherwise, update the room state
                         const newRoomData = {
                             ...roomData,
                             players: newPlayers.length === 1 ? [newPlayers[0], null] : [null, null],
@@ -245,7 +243,7 @@
                     if (room.playerCount === 1) {
                         statusClass = 'bg-yellow-100 border-yellow-300';
                         btn.disabled = false;
-                    } else { // playerCount === 2
+                    } else {
                         statusClass = 'bg-red-200 border-red-400 text-gray-500';
                         btn.disabled = true;
                     }
@@ -272,7 +270,6 @@
                     let roomData;
 
                     if (!roomDoc.exists()) {
-                        // Create the room if it doesn't exist
                         roomData = {
                             id: roomId,
                             players: [{ id: userId, name: localPlayerName, score: 0, rpsChoice: null, bet: null, wantsRematch: false }, null],
@@ -281,7 +278,6 @@
                         };
                         myPlayerIndex = 0;
                     } else {
-                        // Join existing room
                         roomData = roomDoc.data();
                         if (roomData.playerCount >= 2) {
                             throw new Error("Phòng đã đầy!");
@@ -297,7 +293,6 @@
                     transaction.set(roomRef, roomData);
                 });
 
-                // Successfully joined, stop listening to lobby and listen to game
                 if(lobbyUnsubscribe) lobbyUnsubscribe();
                 currentRoomId = roomId;
                 listenToGame(roomId);
@@ -316,7 +311,6 @@
             gameUnsubscribe = window.firebase.onSnapshot(roomRef, (doc) => {
                 if (doc.exists()) {
                     gameState = doc.data();
-                    // Determine myPlayerIndex if not set (e.g., on page refresh)
                     if (myPlayerIndex === null) {
                         myPlayerIndex = gameState.players.findIndex(p => p && p.id === userId);
                     }
@@ -330,8 +324,7 @@
         
         function updateGameUI() {
              if (!gameState || !gameState.players || myPlayerIndex === -1 || myPlayerIndex === null) {
-                // If I'm not in the player list anymore, means I was kicked or left
-                if(currentRoomId) { // Only show notification if we thought we were in a room
+                if(currentRoomId) {
                     showNotification("Bạn đã bị ngắt kết nối khỏi phòng.");
                     goToLobby();
                 }
@@ -343,7 +336,6 @@
             
             gameRoomId.textContent = currentRoomId;
 
-            // Render player boxes
             const renderPlayerBox = (el, player, isMe) => {
                 if (!player) {
                     el.innerHTML = `<h3 class="font-bold text-lg">Đang chờ...</h3>`;
@@ -352,7 +344,6 @@
                 const rpsMap = { r: '✊', p: '✋', s: '✂️' };
                 let rpsDisplay = '';
                  if (player.rpsChoice && gameState.status === 'rps') {
-                    // Show choice only after both have chosen
                     if (gameState.players[0]?.rpsChoice && gameState.players[1]?.rpsChoice) {
                         rpsDisplay = `<p class="mt-1">Ra: <span class="text-2xl">${rpsMap[player.rpsChoice]}</span></p>`;
                     } else {
@@ -367,11 +358,9 @@
                 `;
             };
             
-            // Player 0 is always on the left (blue), Player 1 is on the right (red)
             renderPlayerBox(player1Info, gameState.players[0], myPlayerIndex === 0);
             renderPlayerBox(player2Info, gameState.players[1], myPlayerIndex === 1);
 
-            // Hide all views first
             [rpsView, bettingView, diceRollView, resultView].forEach(v => v.classList.add('hidden'));
 
             switch(gameState.status) {
@@ -383,6 +372,8 @@
                 case 'rolling': handleRollingUI(); break;
                 case 'results': handleResultUI(me); break;
             }
+
+            checkAndResetForRematch();
         }
         
         function handleRPSUI(me, opponent) {
@@ -428,7 +419,7 @@
             diceRollView.classList.remove('hidden');
             document.getElementById('rolling-text').textContent = "Đang tung xúc xắc...";
             animateDice();
-            if (myPlayerIndex === 0) { // Player 0 (host) is responsible for rolling
+            if (myPlayerIndex === 0) {
                  setTimeout(rollDice, 2500);
             }
         }
@@ -436,7 +427,7 @@
         function handleResultUI(me) {
             gameStatus.textContent = 'Vòng chơi kết thúc!';
             resultView.classList.remove('hidden');
-            bettingView.classList.remove('hidden'); // Show board with results
+            bettingView.classList.remove('hidden');
             renderBettingBoard();
             document.getElementById('dice-result-value').textContent = gameState.diceResult;
             if (gameState.diceFaces) {
@@ -483,11 +474,11 @@
         continueBtn.addEventListener('click', async () => {
              const winner = determineRPSWinner();
              const roomRef = window.firebase.doc(db, roomsCollectionPath, `room-${currentRoomId}`);
-             if (winner === -1) { // Tie
-                 if (myPlayerIndex === 0) { // Host resets
+             if (winner === -1) {
+                 if (myPlayerIndex === 0) {
                      await window.firebase.updateDoc(roomRef, { 'players.0.rpsChoice': null, 'players.1.rpsChoice': null });
                  }
-             } else { // Winner
+             } else {
                  if (myPlayerIndex === winner) {
                      await window.firebase.updateDoc(roomRef, { status: 'betting', turn: winner, rpsWinner: winner });
                  }
@@ -508,7 +499,7 @@
         }
 
         async function rollDice() {
-            if (myPlayerIndex !== 0) return; // Only host rolls
+            if (myPlayerIndex !== 0) return;
             const die1 = Math.floor(Math.random() * 6) + 1;
             const die2 = Math.floor(Math.random() * 6) + 1;
             const total = die1 + die2;
@@ -527,23 +518,36 @@
             };
             await window.firebase.updateDoc(window.firebase.doc(db, roomsCollectionPath, `room-${currentRoomId}`), updates);
         }
-
+        
         playAgainBtn.addEventListener('click', async () => {
             await updatePlayerState('wantsRematch', true);
-            
-            // Check if opponent also wants rematch, must read opponent state from gameState
-            const opponentWantsRematch = gameState.players[1 - myPlayerIndex]?.wantsRematch;
-            if(opponentWantsRematch && myPlayerIndex === 0) {
-                 const nextTurn = gameState.roundWinner !== null && gameState.roundWinner !== -1 ? gameState.roundWinner : gameState.rpsWinner;
-                 await window.firebase.updateDoc(window.firebase.doc(db, roomsCollectionPath, `room-${currentRoomId}`), {
-                    status: 'betting', turn: nextTurn, rpsWinner: nextTurn,
-                    diceResult: null, roundWinner: null, diceFaces: null,
-                    'players.0.bet': null, 'players.0.wantsRematch': false, 'players.0.rpsChoice': null,
-                    'players.1.bet': null, 'players.1.wantsRematch': false, 'players.1.rpsChoice': null,
-                 });
-            }
         });
         
+        async function checkAndResetForRematch() {
+            if (
+                gameState.status === 'results' &&
+                gameState.players[0]?.wantsRematch &&
+                gameState.players[1]?.wantsRematch &&
+                myPlayerIndex === 0
+            ) {
+                const nextTurn = gameState.roundWinner !== null && gameState.roundWinner !== -1 ? gameState.roundWinner : gameState.rpsWinner;
+                await window.firebase.updateDoc(window.firebase.doc(db, roomsCollectionPath, `room-${currentRoomId}`), {
+                    status: 'betting',
+                    turn: nextTurn,
+                    rpsWinner: nextTurn,
+                    diceResult: null,
+                    roundWinner: null,
+                    diceFaces: null,
+                    'players.0.bet': null,
+                    'players.0.wantsRematch': false,
+                    'players.0.rpsChoice': null,
+                    'players.1.bet': null,
+                    'players.1.wantsRematch': false,
+                    'players.1.rpsChoice': null,
+                });
+            }
+        }
+
         function renderBettingBoard() {
              const board = document.getElementById('betting-board');
              board.innerHTML = '';
@@ -609,13 +613,12 @@
                             userId = user.uid;
                         }
                     });
-
-                    // Gracefully handle auth token issues
+                    
                     if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                         try {
                             await window.firebase.signInWithCustomToken(auth, __initial_auth_token);
                         } catch (error) {
-                            console.error("Custom token sign-in failed, falling back to anonymous.", error);
+                            console.log("Custom token sign-in failed, falling back to anonymous sign-in.");
                             try {
                                 await window.firebase.signInAnonymously(auth);
                             } catch (anonError) {
