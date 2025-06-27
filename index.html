@@ -114,8 +114,8 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, collection, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, updateDoc, collection, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // --- Firebase Initialization ---
         const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
@@ -496,7 +496,6 @@
              }
         });
         
-        // FIX: Corrected the logic to wait for the second player's bet.
         async function placeBet(number) {
             const opponentIndex = 1 - myPlayerIndex;
             const updates = {
@@ -504,7 +503,6 @@
                 turn: opponentIndex
             };
             
-            // Check if the opponent object exists and their bet has been placed.
             if (gameState.players[opponentIndex] && gameState.players[opponentIndex].bet !== null) {
                 updates.status = 'rolling';
                 updates.turn = null;
@@ -576,10 +574,16 @@
                             return;
                         }
                         
-                        const nextTurn = roomData.roundWinner !== null && roomData.roundWinner !== -1 ? roomData.roundWinner : roomData.rpsWinner;
-                        
                         const p1 = roomData.players[0];
                         const p2 = roomData.players[1];
+
+                        // FIX: Ensure player objects and their properties are valid before creating new state
+                        if (!p1 || !p2 || typeof p1.name === 'undefined' || typeof p2.name === 'undefined') {
+                            console.error("Dữ liệu người chơi không hợp lệ, không thể chơi lại.");
+                            return; // Abort if data is corrupted
+                        }
+
+                        const nextTurn = roomData.roundWinner !== null && roomData.roundWinner !== -1 ? roomData.roundWinner : roomData.rpsWinner;
 
                         const newPlayers = [
                             { id: p1.id, name: p1.name, score: Number.isFinite(p1.score) ? p1.score : 0, rpsChoice: null, bet: null, wantsRematch: false },
