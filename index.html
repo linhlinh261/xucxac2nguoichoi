@@ -179,7 +179,6 @@
             
             lobbyPlayerName.textContent = localPlayerName;
             showView(lobbyView);
-            // FIX: Render the lobby skeleton immediately, then listen for real data.
             renderLobby({});
             listenToLobby();
         }
@@ -604,6 +603,12 @@
         });
 
         window.onload = () => {
+            // FIX: Disable button until auth is ready.
+            enterLobbyBtn.disabled = true;
+            enterLobbyBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+            enterLobbyBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
+            enterLobbyBtn.textContent = 'Đang kết nối...';
+
             const checkFirebase = setInterval(async () => {
                 if (window.firebase) {
                     clearInterval(checkFirebase);
@@ -613,6 +618,16 @@
                     window.firebase.onAuthStateChanged(auth, user => {
                         if (user) {
                             userId = user.uid;
+                            // FIX: Enable button now that auth is ready.
+                            enterLobbyBtn.disabled = false;
+                            enterLobbyBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                            enterLobbyBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
+                            enterLobbyBtn.textContent = 'Vào Sảnh Chờ';
+                        } else {
+                            enterLobbyBtn.disabled = true;
+                            enterLobbyBtn.textContent = 'Lỗi kết nối';
+                            enterLobbyBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
+                            enterLobbyBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
                         }
                     });
                     
