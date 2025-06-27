@@ -179,6 +179,8 @@
             
             lobbyPlayerName.textContent = localPlayerName;
             showView(lobbyView);
+            // FIX: Render the lobby skeleton immediately, then listen for real data.
+            renderLobby({});
             listenToLobby();
         }
         
