@@ -7,27 +7,16 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <!-- Firebase -->
-   <script>
-  window.__firebase_config = JSON.stringify({
-apiKey: "AIzaSyCUrFw_GAv5bIGfwFfuiwCuBcjaNqFohVs",
-  authDomain: "tonghaixucxac.firebaseapp.com",
-  projectId: "tonghaixucxac",
-  storageBucket: "tonghaixucxac.firebasestorage.app",
-  messagingSenderId: "282682257745",
-  appId: "1:282682257745:web:b1d53ac3f903d95be8a370",
-  });
-</script>
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, collection, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-
-        window.firebase = { auth, db, signInAnonymously, onAuthStateChanged, doc, getDoc, setDoc, onSnapshot, updateDoc, collection, runTransaction, signInWithCustomToken };
+    <script>
+        // Use user-provided Firebase config
+        window.__firebase_config = JSON.stringify({
+            apiKey: "AIzaSyCUrFw_GAv5bIGfwFfuiwCuBcjaNqFohVs",
+            authDomain: "tonghaixucxac.firebaseapp.com",
+            projectId: "tonghaixucxac",
+            storageBucket: "tonghaixucxac.firebasestorage.app",
+            messagingSenderId: "282682257745",
+            appId: "1:282682257745:web:b1d53ac3f903d95be8a370",
+        });
     </script>
     <style>
         body { font-family: 'Roboto', sans-serif; }
@@ -124,6 +113,16 @@ apiKey: "AIzaSyCUrFw_GAv5bIGfwFfuiwCuBcjaNqFohVs",
     </div>
 
     <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, collection, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // --- Firebase Initialization ---
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
         // --- UI Elements ---
         const nameView = document.getElementById('name-view');
         const lobbyView = document.getElementById('lobby-view');
@@ -149,13 +148,13 @@ apiKey: "AIzaSyCUrFw_GAv5bIGfwFfuiwCuBcjaNqFohVs",
         // --- App State ---
         let localPlayerName = '';
         let currentRoomId = null;
-        let myPlayerIndex = null; // 0 or 1
+        let myPlayerIndex = null;
         let gameState = {};
         let lobbyUnsubscribe = null;
         let gameUnsubscribe = null;
+        let userId;
 
-        // --- Firebase State ---
-        let db, auth, userId;
+        // --- Constants ---
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const roomsCollectionPath = `/artifacts/${appId}/public/data/dice-game-rooms`;
         
@@ -196,9 +195,9 @@ apiKey: "AIzaSyCUrFw_GAv5bIGfwFfuiwCuBcjaNqFohVs",
         async function leaveRoom() {
             if (!currentRoomId || userId === null) return goToLobby();
 
-            const roomRef = window.firebase.doc(db, roomsCollectionPath, `room-${currentRoomId}`);
+            const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
             try {
-                await window.firebase.runTransaction(db, async (transaction) => {
+                await runTransaction(db, async (transaction) => {
                     const roomDoc = await transaction.get(roomRef);
                     if (!roomDoc.exists()) return;
 
@@ -225,12 +224,11 @@ apiKey: "AIzaSyCUrFw_GAv5bIGfwFfuiwCuBcjaNqFohVs",
         }
         quitGameBtn.addEventListener('click', leaveRoom);
 
-
         // --- Lobby Logic ---
         function listenToLobby() {
             if (lobbyUnsubscribe) lobbyUnsubscribe();
-            const roomsRef = window.firebase.collection(db, roomsCollectionPath);
-            lobbyUnsubscribe = window.firebase.onSnapshot(roomsRef, (snapshot) => {
+            const roomsRef = collection(db, roomsCollectionPath);
+            lobbyUnsubscribe = onSnapshot(roomsRef, (snapshot) => {
                 const roomsData = {};
                 snapshot.forEach(doc => {
                     const room = doc.data();
@@ -273,10 +271,10 @@ apiKey: "AIzaSyCUrFw_GAv5bIGfwFfuiwCuBcjaNqFohVs",
         }
         
         async function joinRoom(roomId) {
-            const roomRef = window.firebase.doc(db, roomsCollectionPath, `room-${roomId}`);
+            const roomRef = doc(db, roomsCollectionPath, `room-${roomId}`);
             
             try {
-                await window.firebase.runTransaction(db, async (transaction) => {
+                await runTransaction(db, async (transaction) => {
                     const roomDoc = await transaction.get(roomRef);
                     let roomData;
 
@@ -318,8 +316,8 @@ apiKey: "AIzaSyCUrFw_GAv5bIGfwFfuiwCuBcjaNqFohVs",
         // --- Game Logic ---
         function listenToGame(roomId) {
             if (gameUnsubscribe) gameUnsubscribe();
-            const roomRef = window.firebase.doc(db, roomsCollectionPath, `room-${roomId}`);
-            gameUnsubscribe = window.firebase.onSnapshot(roomRef, (doc) => {
+            const roomRef = doc(db, roomsCollectionPath, `room-${roomId}`);
+            gameUnsubscribe = onSnapshot(roomRef, (doc) => {
                 if (doc.exists()) {
                     gameState = doc.data();
                     if (myPlayerIndex === null) {
@@ -362,8 +360,8 @@ apiKey: "AIzaSyCUrFw_GAv5bIGfwFfuiwCuBcjaNqFohVs",
                     }
                 }
                 el.innerHTML = `
-                    <h3 class="text-lg font-bold">${player.name} ${isMe ? '(Bạn)' : ''}</h3>
-                    <p class="text-2xl font-black text-indigo-600">${player.score} Điểm</p>
+                    <h3 class="text-lg font-bold">${player.name || 'Người chơi'}</h3>
+                    <p class="text-2xl font-black text-indigo-600">${player.score || 0} Điểm</p>
                     ${player.bet ? `<p class="mt-1">Đã cược: <span class="font-bold text-xl">${player.bet}</span></p>` : ''}
                     ${rpsDisplay}
                 `;
@@ -451,7 +449,7 @@ apiKey: "AIzaSyCUrFw_GAv5bIGfwFfuiwCuBcjaNqFohVs",
             const winnerId = gameState.roundWinner;
             if (winnerId === null) winnerText.textContent = 'Không ai đoán trúng!';
             else if (winnerId === -1) winnerText.textContent = 'Cả hai người chơi đều đoán trúng! Mỗi người 1 điểm.';
-            else winnerText.textContent = `${gameState.players[winnerId].name} đã thắng vòng này và được 1 điểm!`;
+            else winnerText.textContent = `${gameState.players[winnerId]?.name || 'Người chơi'} đã thắng vòng này và được 1 điểm!`;
 
             if (me.wantsRematch) {
                 playAgainBtn.textContent = 'Đang chờ đối thủ...';
@@ -465,7 +463,7 @@ apiKey: "AIzaSyCUrFw_GAv5bIGfwFfuiwCuBcjaNqFohVs",
         async function updatePlayerState(key, value) {
              const update = {};
              update[`players.${myPlayerIndex}.${key}`] = value;
-             await window.firebase.updateDoc(window.firebase.doc(db, roomsCollectionPath, `room-${currentRoomId}`), update);
+             await updateDoc(doc(db, roomsCollectionPath, `room-${currentRoomId}`), update);
         }
 
         rpsChoices.addEventListener('click', (e) => {
@@ -484,14 +482,14 @@ apiKey: "AIzaSyCUrFw_GAv5bIGfwFfuiwCuBcjaNqFohVs",
         
         continueBtn.addEventListener('click', async () => {
              const winner = determineRPSWinner();
-             const roomRef = window.firebase.doc(db, roomsCollectionPath, `room-${currentRoomId}`);
+             const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
              if (winner === -1) {
                  if (myPlayerIndex === 0) {
-                     await window.firebase.updateDoc(roomRef, { 'players.0.rpsChoice': null, 'players.1.rpsChoice': null });
+                     await updateDoc(roomRef, { 'players.0.rpsChoice': null, 'players.1.rpsChoice': null });
                  }
              } else {
                  if (myPlayerIndex === winner) {
-                     await window.firebase.updateDoc(roomRef, { status: 'betting', turn: winner, rpsWinner: winner });
+                     await updateDoc(roomRef, { status: 'betting', turn: winner, rpsWinner: winner });
                  }
              }
         });
@@ -506,34 +504,59 @@ apiKey: "AIzaSyCUrFw_GAv5bIGfwFfuiwCuBcjaNqFohVs",
                 updates.status = 'rolling';
                 updates.turn = null;
             }
-            await window.firebase.updateDoc(window.firebase.doc(db, roomsCollectionPath, `room-${currentRoomId}`), updates);
+            await updateDoc(doc(db, roomsCollectionPath, `room-${currentRoomId}`), updates);
         }
 
+        // FIX: Use a transaction to make dice rolling safer
         async function rollDice() {
             if (myPlayerIndex !== 0) return;
-            const die1 = Math.floor(Math.random() * 6) + 1;
-            const die2 = Math.floor(Math.random() * 6) + 1;
-            const total = die1 + die2;
-            const p1 = gameState.players[0];
-            const p2 = gameState.players[1];
-            let p1Won = p1.bet === total;
-            let p2Won = p2.bet === total;
+            const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
             
-            const updates = {
-                diceFaces: [die1, die2],
-                diceResult: total,
-                status: 'results',
-                'players.0.score': p1.score + (p1Won ? 1 : 0),
-                'players.1.score': p2.score + (p2Won ? 1 : 0),
-                roundWinner: p1Won && p2Won ? -1 : (p1Won ? 0 : (p2Won ? 1 : null))
-            };
-            await window.firebase.updateDoc(window.firebase.doc(db, roomsCollectionPath, `room-${currentRoomId}`), updates);
+            try {
+                await runTransaction(db, async (transaction) => {
+                    const roomDoc = await transaction.get(roomRef);
+                    if (!roomDoc.exists()) throw "Phòng không tồn tại!";
+                    
+                    const currentRoomData = roomDoc.data();
+                    if (!currentRoomData.players[0] || !currentRoomData.players[1]) {
+                        console.log("Thiếu người chơi, hủy tung xúc xắc.");
+                        return;
+                    }
+
+                    const die1 = Math.floor(Math.random() * 6) + 1;
+                    const die2 = Math.floor(Math.random() * 6) + 1;
+                    const total = die1 + die2;
+
+                    const p1 = currentRoomData.players[0];
+                    const p2 = currentRoomData.players[1];
+                    
+                    const p1Score = p1.score || 0;
+                    const p2Score = p2.score || 0;
+
+                    let p1Won = p1.bet === total;
+                    let p2Won = p2.bet === total;
+
+                    const updates = {
+                        diceFaces: [die1, die2],
+                        diceResult: total,
+                        status: 'results',
+                        'players.0.score': p1Score + (p1Won ? 1 : 0),
+                        'players.1.score': p2Score + (p2Won ? 1 : 0),
+                        roundWinner: p1Won && p2Won ? -1 : (p1Won ? 0 : (p2Won ? 1 : null))
+                    };
+                    
+                    transaction.update(roomRef, updates);
+                });
+            } catch (e) {
+                console.error("Giao dịch tung xúc xắc thất bại: ", e);
+            }
         }
         
         playAgainBtn.addEventListener('click', async () => {
             await updatePlayerState('wantsRematch', true);
         });
         
+        // FIX: Use a transaction to safely reset the game
         async function checkAndResetForRematch() {
             if (
                 gameState.status === 'results' &&
@@ -541,21 +564,41 @@ apiKey: "AIzaSyCUrFw_GAv5bIGfwFfuiwCuBcjaNqFohVs",
                 gameState.players[1]?.wantsRematch &&
                 myPlayerIndex === 0
             ) {
-                const nextTurn = gameState.roundWinner !== null && gameState.roundWinner !== -1 ? gameState.roundWinner : gameState.rpsWinner;
-                await window.firebase.updateDoc(window.firebase.doc(db, roomsCollectionPath, `room-${currentRoomId}`), {
-                    status: 'betting',
-                    turn: nextTurn,
-                    rpsWinner: nextTurn,
-                    diceResult: null,
-                    roundWinner: null,
-                    diceFaces: null,
-                    'players.0.bet': null,
-                    'players.0.wantsRematch': false,
-                    'players.0.rpsChoice': null,
-                    'players.1.bet': null,
-                    'players.1.wantsRematch': false,
-                    'players.1.rpsChoice': null,
-                });
+                const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
+                try {
+                    await runTransaction(db, async (transaction) => {
+                        const roomDoc = await transaction.get(roomRef);
+                        if (!roomDoc.exists()) return;
+
+                        const roomData = roomDoc.data();
+                        
+                        if (roomData.status !== 'results' || !roomData.players[0]?.wantsRematch || !roomData.players[1]?.wantsRematch) {
+                            return;
+                        }
+                        
+                        const nextTurn = roomData.roundWinner !== null && roomData.roundWinner !== -1 ? roomData.roundWinner : roomData.rpsWinner;
+                        
+                        const p1 = roomData.players[0];
+                        const p2 = roomData.players[1];
+
+                        const newPlayers = [
+                            { id: p1.id, name: p1.name, score: p1.score, rpsChoice: null, bet: null, wantsRematch: false },
+                            { id: p2.id, name: p2.name, score: p2.score, rpsChoice: null, bet: null, wantsRematch: false }
+                        ];
+
+                        transaction.update(roomRef, {
+                            status: 'betting',
+                            turn: nextTurn,
+                            rpsWinner: nextTurn,
+                            diceResult: null,
+                            roundWinner: null,
+                            diceFaces: null,
+                            players: newPlayers
+                        });
+                    });
+                } catch (e) {
+                    console.error("Giao dịch chơi lại thất bại: ", e);
+                }
             }
         }
 
@@ -612,59 +655,36 @@ apiKey: "AIzaSyCUrFw_GAv5bIGfwFfuiwCuBcjaNqFohVs",
             goToLobby();
         });
 
-        window.onload = () => {
-            // FIX: Disable button until auth is ready.
+        (async () => {
             enterLobbyBtn.disabled = true;
             enterLobbyBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
             enterLobbyBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
             enterLobbyBtn.textContent = 'Đang kết nối...';
 
-            const checkFirebase = setInterval(async () => {
-                if (window.firebase) {
-                    clearInterval(checkFirebase);
-                    db = window.firebase.db;
-                    auth = window.firebase.auth;
-
-                    window.firebase.onAuthStateChanged(auth, user => {
-                        if (user) {
-                            userId = user.uid;
-                            // FIX: Enable button now that auth is ready.
-                            enterLobbyBtn.disabled = false;
-                            enterLobbyBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
-                            enterLobbyBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
-                            enterLobbyBtn.textContent = 'Vào Sảnh Chờ';
-                        } else {
-                            enterLobbyBtn.disabled = true;
-                            enterLobbyBtn.textContent = 'Lỗi kết nối';
-                            enterLobbyBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
-                            enterLobbyBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
-                        }
-                    });
-                    
-                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                        try {
-                            await window.firebase.signInWithCustomToken(auth, __initial_auth_token);
-                        } catch (error) {
-                            console.log("Custom token sign-in failed, falling back to anonymous sign-in.");
-                            try {
-                                await window.firebase.signInAnonymously(auth);
-                            } catch (anonError) {
-                                console.error("Anonymous sign-in also failed:", anonError);
-                                showNotification("Lỗi xác thực người dùng nghiêm trọng.");
-                            }
-                        }
-                    } else {
-                        try {
-                            await window.firebase.signInAnonymously(auth);
-                        } catch (error) {
-                            console.error("Anonymous sign-in failed:", error);
-                            showNotification("Lỗi xác thực người dùng.");
-                        }
-                    }
+            onAuthStateChanged(auth, user => {
+                if (user) {
+                    userId = user.uid;
+                    enterLobbyBtn.disabled = false;
+                    enterLobbyBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                    enterLobbyBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
+                    enterLobbyBtn.textContent = 'Vào Sảnh Chờ';
+                } else {
+                    userId = null;
+                    enterLobbyBtn.disabled = true;
+                    enterLobbyBtn.textContent = 'Lỗi kết nối';
                 }
-            }, 100);
+            });
+            
+            try {
+                 if(auth.currentUser) return; // Already signed in
+                 await signInAnonymously(auth);
+            } catch (error) {
+                 console.error("Lỗi đăng nhập ẩn danh:", error);
+                 showNotification("Lỗi xác thực người dùng.");
+            }
+
             showView(nameView);
-        };
+        })();
     </script>
 </body>
 </html>
