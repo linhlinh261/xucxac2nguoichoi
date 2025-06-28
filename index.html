@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="vi">myPlayerIndex
+<html lang="vi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -335,8 +335,7 @@
     if (!gameState || !gameState.players) return;
     myPlayerIndex = gameState.players.findIndex(p => p && p.id === userId);
     if (myPlayerIndex === -1 || myPlayerIndex === null) {
-        if(currentRoomId) {
-            showNotification("Bạn đã bị ngắt kết nối khỏi phòng.");
+        console.log("userId", userId, "players", gameState.players);
             goToLobby();
         }
         return;
