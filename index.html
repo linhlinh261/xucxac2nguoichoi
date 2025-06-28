@@ -206,22 +206,28 @@
                     if (!roomDoc.exists()) return;
 
                     const roomData = roomDoc.data();
-                    // Filter out the current player
-                    const newPlayers = roomData.players.filter(p => p && p.id !== userId);
                     
-                    if (newPlayers.length === 0) {
-                        // If no players are left, delete the room
-                        transaction.delete(roomRef);
-                    } else {
-                        // Otherwise, update the player list and status
-                        const newRoomData = {
-                            ...roomData,
-                            players: newPlayers.length === 1 ? [newPlayers[0], null] : [null, null],
-                            playerCount: newPlayers.length,
-                            status: 'waiting' // Reset status to waiting
-                        };
-                         transaction.set(roomRef, newRoomData);
+                    const leavingPlayerIndex = roomData.players.findIndex(p => p && p.id === userId);
+                    if (leavingPlayerIndex === -1) {
+                        return; // Player not in room, nothing to do
                     }
+                    
+                    // If player is alone in room, or something is out of sync, just delete the room.
+                    if (roomData.playerCount <= 1) {
+                        transaction.delete(roomRef);
+                        return;
+                    }
+
+                    // Create a new players array, setting the leaving player's slot to null
+                    const newPlayers = [...roomData.players];
+                    newPlayers[leavingPlayerIndex] = null;
+
+                    // Update the room state
+                    transaction.update(roomRef, {
+                        players: newPlayers,
+                        playerCount: roomData.playerCount - 1,
+                        status: 'waiting'
+                    });
                 });
             } catch (error) {
                 console.error("Error leaving room: ", error);
@@ -315,12 +321,6 @@
 
                 if(lobbyUnsubscribe) lobbyUnsubscribe();
                 currentRoomId = roomId;
-                // We must read the player index again after joining to be sure.
-                const roomSnap = await getDoc(roomRef);
-                if (roomSnap.exists()) {
-                  const roomData = roomSnap.data();
-                  myPlayerIndex = roomData.players.findIndex(p => p && p.id === userId);
-                }
                 listenToGame(roomId);
                 showView(gameView);
 
@@ -338,8 +338,7 @@
                 if (doc.exists()) {
                     gameState = doc.data();
 
-                    // FIX: Defensively ensure gameState.players is always an array
-                    // Firestore can sometimes return array-like objects instead of true arrays.
+                    // Defensively ensure gameState.players is always an array
                     if (gameState.players && !Array.isArray(gameState.players)) {
                         const playersMap = gameState.players;
                         gameState.players = [playersMap['0'] || null, playersMap['1'] || null];
@@ -355,11 +354,19 @@
 
        function updateGameUI() {
             if (!gameState || !gameState.players) return;
-            // Crucially, find my player index EVERY time the UI updates based on the latest state
+            
             myPlayerIndex = gameState.players.findIndex(p => p && p.id === userId);
             
             if (myPlayerIndex === -1) {
-                // If I'm no longer in the player list, it means I was kicked or left.
+                // FIX: Guard against race condition on joining a room.
+                const isWaitingForPlayers = gameState.status === 'waiting' || gameState.status === 'rps';
+                const hasEmptySlot = gameState.players.some(p => p === null);
+
+                if (isWaitingForPlayers && hasEmptySlot) {
+                    console.log("Player not in state yet, likely joining. Waiting for next snapshot.");
+                    return;
+                }
+                
                 console.log("Player not found in game state, returning to lobby.");
                 goToLobby();
                 return;
@@ -371,7 +378,6 @@
 
             gameRoomId.textContent = currentRoomId;
 
-            // Helper to render a player's info box
             function renderPlayerBox(el, player, isMe) {
                 if (!player) {
                     el.innerHTML = `<h3 class="font-bold text-lg">Đang chờ...</h3>`;
@@ -379,7 +385,6 @@
                 }
                 const rpsMap = { r: '✊', p: '✋', s: '✂️' };
                 let rpsDisplay = '';
-                // Logic to display RPS choice status
                 if (player.rpsChoice && gameState.status === 'rps') {
                     if (gameState.players[0]?.rpsChoice && gameState.players[1]?.rpsChoice) {
                         rpsDisplay = `<p class="mt-1">Ra: <span class="text-2xl">${rpsMap[player.rpsChoice]}</span></p>`;
@@ -401,7 +406,6 @@
 
             [rpsView, bettingView, diceRollView, resultView].forEach(v => v.classList.add('hidden'));
 
-            // State machine for the game UI
             switch(gameState.status) {
                 case 'waiting':
                     gameStatus.textContent = 'Đang chờ người chơi thứ hai...';
@@ -411,8 +415,7 @@
                 case 'rolling': handleRollingUI(); break;
                 case 'results': handleResultUI(me); break;
             }
-            // Check for rematch agreement after results are shown
-             if (gameState.status === 'results' && me?.wantsRematch && opponent?.wantsRematch) {
+            if (gameState.status === 'results' && me?.wantsRematch && opponent?.wantsRematch) {
                  checkAndResetForRematch();
              }
         }
@@ -425,27 +428,24 @@
              const rpsMap = { r: 'Búa ✊', p: 'Bao ✋', s: 'Kéo ✂️' };
 
              if (me?.rpsChoice && opponent?.rpsChoice) {
-                 // Both players made a choice
                  rpsChoices.classList.add('hidden');
                  const winnerId = determineRPSWinner();
-                 if (winnerId === -1) { // Draw
+                 if (winnerId === -1) { 
                      rpsResultText.innerHTML = `Hòa! Cả hai cùng ra ${rpsMap[me.rpsChoice]}. Chơi lại!`;
-                     if (myPlayerIndex === 0) continueBtn.classList.remove('hidden'); // Host can reset
+                     if (myPlayerIndex === 0) continueBtn.classList.remove('hidden'); 
                      else gameStatus.textContent = 'Hòa! Đang chờ chủ phòng chơi lại...';
-                 } else { // There is a winner
+                 } else { 
                      const winnerName = gameState.players[winnerId]?.name || `Người chơi ${winnerId + 1}`;
                      const p1Name = gameState.players[0]?.name || 'Người chơi 1';
                      const p2Name = gameState.players[1]?.name || 'Người chơi 2';
                      rpsResultText.innerHTML = `${p1Name} ra ${rpsMap[gameState.players[0].rpsChoice]}, ${p2Name} ra ${rpsMap[gameState.players[1].rpsChoice]}. <br> <span class="text-green-600">${winnerName} thắng và đi trước!</span>`;
-                     if (myPlayerIndex === winnerId) continueBtn.classList.remove('hidden'); // Winner can continue
+                     if (myPlayerIndex === winnerId) continueBtn.classList.remove('hidden'); 
                      else gameStatus.textContent = `Đang chờ ${winnerName} tiếp tục...`;
                  }
              } else if (me?.rpsChoice) {
-                 // Only I have made a choice
                  gameStatus.textContent = `Đã chọn. Đang chờ ${opponent?.name || 'đối thủ'}...`;
                  rpsChoices.classList.add('hidden');
              } else {
-                 // It's my turn to choose
                  gameStatus.textContent = 'Đến lượt bạn! Hãy ra Kéo, Búa, hoặc Bao.';
              }
         }
@@ -465,7 +465,7 @@
             diceRollView.classList.remove('hidden');
             document.getElementById('rolling-text').textContent = "Đang tung xúc xắc...";
             animateDice();
-            if (myPlayerIndex === 0) { // Only the host triggers the actual dice roll calculation
+            if (myPlayerIndex === 0) {
                  setTimeout(rollDice, 2500);
             }
         }
@@ -473,7 +473,7 @@
         function handleResultUI(me) {
             gameStatus.textContent = 'Vòng chơi kết thúc!';
             resultView.classList.remove('hidden');
-            bettingView.classList.remove('hidden'); // Show final bets
+            bettingView.classList.remove('hidden'); 
             renderBettingBoard();
             document.getElementById('dice-result-value').textContent = gameState.diceResult;
             if (gameState.diceFaces) {
@@ -511,20 +511,20 @@
         function determineRPSWinner() {
             const p1c = gameState.players[0]?.rpsChoice;
             const p2c = gameState.players[1]?.rpsChoice;
-            if (!p1c || !p2c) return null; // Not all choices are in
-            if (p1c === p2c) return -1; // Draw
-            if ((p1c === 'r' && p2c === 's') || (p1c === 's' && p2c === 'p') || (p1c === 'p' && p2c === 'r')) return 0; // Player 1 wins
-            return 1; // Player 2 wins
+            if (!p1c || !p2c) return null; 
+            if (p1c === p2c) return -1; 
+            if ((p1c === 'r' && p2c === 's') || (p1c === 's' && p2c === 'p') || (p1c === 'p' && p2c === 'r')) return 0;
+            return 1;
         }
         
         continueBtn.addEventListener('click', async () => {
              const winner = determineRPSWinner();
              const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
-             if (winner === -1) { // On draw, only host resets
+             if (winner === -1) { 
                  if (myPlayerIndex === 0) {
                      await updateDoc(roomRef, { 'players.0.rpsChoice': null, 'players.1.rpsChoice': null });
                  }
-             } else { // On win, only winner progresses the game
+             } else { 
                  if (myPlayerIndex === winner) {
                      await updateDoc(roomRef, { status: 'betting', turn: winner, rpsWinner: winner });
                  }
@@ -535,19 +535,18 @@
             const opponentIndex = 1 - myPlayerIndex;
             const updates = {
                 [`players.${myPlayerIndex}.bet`]: number,
-                turn: opponentIndex // Switch turn to the opponent
+                turn: opponentIndex
             };
             
-            // If the opponent has already placed their bet, it's time to roll
             if (gameState.players[opponentIndex] && gameState.players[opponentIndex].bet !== null) {
                 updates.status = 'rolling';
-                updates.turn = null; // No one's turn during roll
+                updates.turn = null; 
             }
             await updateDoc(doc(db, roomsCollectionPath, `room-${currentRoomId}`), updates);
         }
 
         async function rollDice() {
-            if (myPlayerIndex !== 0) return; // Only host calculates result
+            if (myPlayerIndex !== 0) return; 
             const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
             
             try {
@@ -557,7 +556,7 @@
                     
                     const currentRoomData = roomDoc.data();
                     if (!currentRoomData.players[0] || !currentRoomData.players[1]) {
-                        return; // Abort if a player left
+                        return; 
                     }
 
                     const die1 = Math.floor(Math.random() * 6) + 1;
@@ -594,7 +593,6 @@
         });
         
         async function checkAndResetForRematch() {
-            // Only the host (player 0) can reset the game for a rematch
             if (
                 gameState.status === 'results' &&
                 gameState.players[0]?.wantsRematch &&
@@ -609,18 +607,16 @@
 
                         const roomData = roomDoc.data();
                         
-                        // Double check conditions inside transaction to prevent race conditions
                         if (roomData.status !== 'results' || !roomData.players[0]?.wantsRematch || !roomData.players[1]?.wantsRematch) {
                             return;
                         }
                         
-                        // The winner of the previous round (or the RPS winner if it was a tie) goes first
                         const nextTurn = roomData.roundWinner !== null && roomData.roundWinner !== -1 ? roomData.roundWinner : roomData.rpsWinner;
 
                         transaction.update(roomRef, {
                             status: 'betting',
                             turn: nextTurn,
-                            rpsWinner: nextTurn, // Keep the original RPS winner for ties
+                            rpsWinner: nextTurn,
                             diceResult: null,
                             roundWinner: null,
                             diceFaces: null,
@@ -654,7 +650,6 @@
                  else if (i === opponentBet) classes += 'selected-by-opponent ';
                  else classes += 'bg-white border-gray-300 ';
                  
-                 // Enable button if it's my turn, I haven't bet yet, and the opponent hasn't picked this number
                  if (myTurn && !me?.bet && i !== opponentBet) {
                      classes += 'hover:bg-blue-200 cursor-pointer';
                      circle.disabled = false;
@@ -662,7 +657,6 @@
                      classes += 'opacity-70 cursor-not-allowed';
                      circle.disabled = true;
                  }
-                 // Highlight the correct answer after the round ends
                  if (gameState.status === 'results' && i === gameState.diceResult) classes += ' correct-guess border-green-400';
                  circle.className = classes;
                  if(!circle.disabled) circle.onclick = () => placeBet(i);
@@ -695,49 +689,45 @@
         });
 
         (async () => {
-            // Disable button while connecting
-            enterLobbyBtn.disabled = true;
-            enterLobbyBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
-            enterLobbyBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
-            enterLobbyBtn.textContent = 'Đang kết nối...';
-
+            // This listener simply keeps the `userId` variable in sync.
             onAuthStateChanged(auth, user => {
-                if (user) {
-                    userId = user.uid;
-                    // Enable button once authenticated
-                    enterLobbyBtn.disabled = false;
-                    enterLobbyBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
-                    enterLobbyBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
-                    enterLobbyBtn.textContent = 'Vào Sảnh Chờ';
-                } else {
-                    userId = null;
-                    enterLobbyBtn.disabled = true;
-                    enterLobbyBtn.textContent = 'Lỗi kết nối';
-                }
+                userId = user ? user.uid : null;
             });
-            
+
+            // Disable the button while we figure out authentication
+            enterLobbyBtn.disabled = true;
+            enterLobbyBtn.textContent = 'Đang kết nối...';
+            enterLobbyBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
+            enterLobbyBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+
             try {
-                // The recommended sign-in pattern for the environment.
-                // Prioritize the custom token provided by the platform.
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
+                const token = (typeof __initial_auth_token === 'string' && __initial_auth_token) ? __initial_auth_token : null;
+                if (token) {
+                    await signInWithCustomToken(auth, token);
                 } else {
-                    // Fallback to anonymous sign-in if no custom token is available.
                     await signInAnonymously(auth);
                 }
             } catch (error) {
-                console.error("Lỗi đăng nhập ban đầu:", error);
-                showNotification("Lỗi xác thực. Thử đăng nhập ẩn danh.");
-                // If the custom token fails for any reason (e.g., invalid claims),
-                // attempt to sign in anonymously as a final fallback to allow the app to run.
+                console.error("Lỗi đăng nhập token, đang thử lại ẩn danh:", error);
                 try {
+                    // Attempt the fallback only if we're not already signed in.
                     if (!auth.currentUser) {
-                       await signInAnonymously(auth);
+                        await signInAnonymously(auth);
                     }
-                } catch (anonError) {
-                    console.error("Lỗi đăng nhập ẩn danh sau khi thất bại:", anonError);
-                    showNotification("Không thể xác thực người dùng.");
+                } catch (fallbackError) {
+                     console.error("Lỗi đăng nhập ẩn danh:", fallbackError);
                 }
+            }
+
+            // Finally, update the UI based on the final authentication state.
+            if (auth.currentUser) {
+                enterLobbyBtn.disabled = false;
+                enterLobbyBtn.textContent = 'Vào Sảnh Chờ';
+                enterLobbyBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
+                enterLobbyBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+            } else {
+                enterLobbyBtn.textContent = 'Lỗi kết nối';
+                showNotification("Không thể kết nối. Vui lòng làm mới trang.");
             }
 
             showView(nameView);
