@@ -291,6 +291,12 @@
             const roomRef = doc(db, roomsCollectionPath, `room-${roomId}`);
             
             try {
+                // We show the game view immediately, with a loading state.
+                showView(gameView);
+                gameRoomId.textContent = roomId;
+                gameStatus.textContent = 'Đang tham gia phòng...';
+
+
                 await runTransaction(db, async (transaction) => {
                     const roomDoc = await transaction.get(roomRef);
                     let roomData;
@@ -325,11 +331,11 @@
                 if(lobbyUnsubscribe) lobbyUnsubscribe();
                 currentRoomId = roomId;
                 listenToGame(roomId);
-                showView(gameView);
 
             } catch (e) {
                 console.error("Join room failed: ", e);
                 showNotification(e.message);
+                goToLobby(); // Go back to lobby if join fails
             }
         }
 
@@ -356,26 +362,19 @@
 
        function updateGameUI() {
             if (!gameState || !gameState.players) {
-                gameStatus.textContent = 'Đang tải phòng...';
+                gameStatus.textContent = 'Đang tải dữ liệu phòng...';
                 return;
             }
             
             myPlayerIndex = gameState.players.findIndex(p => p && p.id === userId);
             
             if (myPlayerIndex === -1) {
-                const isWaitingForPlayers = gameState.status === 'waiting' || gameState.status === 'rps';
-                const hasEmptySlot = gameState.players.some(p => p === null);
-
-                if (isWaitingForPlayers && hasEmptySlot) {
-                    gameStatus.textContent = 'Đang vào phòng...';
-                    [rpsView, bettingView, diceRollView, resultView].forEach(v => v.classList.add('hidden'));
-                    player1Info.innerHTML = `<h3 class="font-bold text-lg">Đang tải...</h3>`;
-                    player2Info.innerHTML = `<h3 class="font-bold text-lg">Đang tải...</h3>`;
-                    return;
-                }
-                
-                showNotification("Đã xảy ra lỗi, đang quay về sảnh chờ.");
-                goToLobby();
+                // This is the race condition state. We've joined, but the first data snapshot
+                // we receive doesn't have us in it yet. We just wait for the next one.
+                gameStatus.textContent = 'Đang đồng bộ...';
+                [rpsView, bettingView, diceRollView, resultView].forEach(v => v.classList.add('hidden'));
+                player1Info.innerHTML = `<h3 class="font-bold text-lg">Đang tải...</h3>`;
+                player2Info.innerHTML = `<h3 class="font-bold text-lg">Đang tải...</h3>`;
                 return;
             }
 
@@ -737,4 +736,4 @@
         })();
     </script>
 </body>
-</html>
+</ht
