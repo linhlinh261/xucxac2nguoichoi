@@ -117,7 +117,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, collection, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // --- Firebase Initialization ---
@@ -355,7 +355,10 @@
         }
 
        function updateGameUI() {
-            if (!gameState || !gameState.players) return;
+            if (!gameState || !gameState.players) {
+                gameStatus.textContent = 'Đang tải phòng...';
+                return;
+            }
             
             myPlayerIndex = gameState.players.findIndex(p => p && p.id === userId);
             
@@ -364,11 +367,14 @@
                 const hasEmptySlot = gameState.players.some(p => p === null);
 
                 if (isWaitingForPlayers && hasEmptySlot) {
-                    console.log("Player not in state yet, likely joining. Waiting for next snapshot.");
+                    gameStatus.textContent = 'Đang vào phòng...';
+                    [rpsView, bettingView, diceRollView, resultView].forEach(v => v.classList.add('hidden'));
+                    player1Info.innerHTML = `<h3 class="font-bold text-lg">Đang tải...</h3>`;
+                    player2Info.innerHTML = `<h3 class="font-bold text-lg">Đang tải...</h3>`;
                     return;
                 }
                 
-                console.log("Player not found in game state, returning to lobby.");
+                showNotification("Đã xảy ra lỗi, đang quay về sảnh chờ.");
                 goToLobby();
                 return;
             }
@@ -686,39 +692,46 @@
                 showNotification("Vui lòng nhập tên của bạn.");
                 return;
             }
+            // Save player name to reuse in next session
+            localStorage.setItem('dice_player_name', localPlayerName);
             goToLobby();
         });
 
         (async () => {
-            onAuthStateChanged(auth, user => {
-                if (user) {
-                    userId = user.uid;
-                    enterLobbyBtn.disabled = false;
-                    enterLobbyBtn.textContent = 'Vào Sảnh Chờ';
-                    enterLobbyBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
-                    enterLobbyBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
-                } else {
-                    userId = null;
-                    enterLobbyBtn.disabled = true;
-                    enterLobbyBtn.textContent = 'Lỗi kết nối';
-                    enterLobbyBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
-                    enterLobbyBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
-                }
-            });
+            // Restore player name from the previous session
+            const savedName = localStorage.getItem('dice_player_name');
+            if (savedName) {
+                playerNameInput.value = savedName;
+            }
 
             enterLobbyBtn.disabled = true;
             enterLobbyBtn.textContent = 'Đang kết nối...';
             enterLobbyBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
             enterLobbyBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
 
-            try {
-                if (!auth.currentUser) {
-                    await signInAnonymously(auth);
+            // onAuthStateChanged is the central place to manage user state.
+            // It ensures we have a persistent user across page reloads.
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    // User is already signed in.
+                    userId = user.uid;
+                    enterLobbyBtn.disabled = false;
+                    enterLobbyBtn.textContent = 'Vào Sảnh Chờ';
+                    enterLobbyBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
+                    enterLobbyBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                } else {
+                    // User is not signed in. Sign them in anonymously.
+                    try {
+                        await signInAnonymously(auth);
+                        // onAuthStateChanged will fire again with the new user state,
+                        // and the code block above will execute.
+                    } catch (error) {
+                        console.error("Lỗi đăng nhập ẩn danh:", error);
+                        showNotification("Không thể kết nối. Vui lòng làm mới trang.");
+                        enterLobbyBtn.textContent = 'Lỗi kết nối';
+                    }
                 }
-            } catch (error) {
-                console.error("Lỗi đăng nhập ẩn danh:", error);
-                showNotification("Không thể kết nối. Vui lòng làm mới trang.");
-            }
+            });
 
             showView(nameView);
         })();
