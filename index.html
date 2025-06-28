@@ -117,13 +117,11 @@
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, collection, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        // --- Firebase Initialization ---
         const firebaseConfig = JSON.parse(window.__firebase_config);
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // --- UI Elements ---
         const nameView = document.getElementById('name-view');
         const lobbyView = document.getElementById('lobby-view');
         const gameView = document.getElementById('game-view');
@@ -145,7 +143,6 @@
         const rpsResultText = document.getElementById('rps-result-text');
         const continueBtn = document.getElementById('continue-btn');
 
-        // --- App State ---
         let localPlayerName = '';
         let currentRoomId = null;
         let myPlayerIndex = null;
@@ -154,11 +151,9 @@
         let gameUnsubscribe = null;
         let userId;
 
-        // --- Constants ---
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const roomsCollectionPath = `/artifacts/${appId}/public/data/dice-game-rooms`;
         
-        // --- Utility ---
         function showNotification(message) {
             const toast = document.getElementById('notification-toast');
             toast.textContent = message;
@@ -174,7 +169,6 @@
             return `<div class="dice bg-white shadow-md dot-${face}">${dots}</div>`;
         }
 
-        // --- Navigation & State Management ---
         function showView(view) {
             [nameView, lobbyView, gameView].forEach(v => v.classList.add('hidden'));
             view.classList.remove('hidden');
@@ -224,7 +218,6 @@
         }
         quitGameBtn.addEventListener('click', leaveRoom);
 
-        // --- Lobby Logic ---
         function listenToLobby() {
             if (lobbyUnsubscribe) lobbyUnsubscribe();
             const roomsRef = collection(db, roomsCollectionPath);
@@ -311,7 +304,6 @@
             }
         }
 
-        // --- Game Logic ---
         function listenToGame(roomId) {
             if (gameUnsubscribe) gameUnsubscribe();
             const roomRef = doc(db, roomsCollectionPath, `room-${roomId}`);
@@ -326,22 +318,19 @@
             });
         }
         
-        // FIX: Re-architected the UI update function to be more robust.
         function updateGameUI() {
             if (!gameState || !Array.isArray(gameState.players)) {
-                return; // Wait for valid game state
+                return;
             }
             
             myPlayerIndex = gameState.players.findIndex(p => p && p.id === userId);
 
-            if (myPlayerIndex === -1) {
-                 // If I'm not in the game anymore (e.g. opponent left and I was kicked), go to lobby.
-                if (currentRoomId) { 
-                    goToLobby();
-                }
+            if (myPlayerIndex === -1 && currentRoomId) {
+                showNotification("Bạn đã bị ngắt kết nối khỏi phòng.");
+                goToLobby();
                 return;
             }
-
+            
             const me = gameState.players[myPlayerIndex];
             const opponent = gameState.players[1 - myPlayerIndex];
             
@@ -384,8 +373,7 @@
                 case 'rolling': handleRollingUI(); break;
                 case 'results': handleResultUI(me); break;
             }
-
-            if (gameState.status === 'results' && me?.wantsRematch && opponent?.wantsRematch) {
+             if (gameState.status === 'results' && me?.wantsRematch && opponent?.wantsRematch) {
                  checkAndResetForRematch();
              }
         }
