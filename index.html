@@ -160,7 +160,8 @@
 
         // --- Constants ---
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'dice-game-2024';
-        const roomsCollectionPath = `/artifacts/${appId}/public/data/dice-game-rooms`;
+        // FIX: Point to a new database path to ignore old, corrupted data.
+        const roomsCollectionPath = `/artifacts/${appId}/public/data/dice-game-rooms-v3`;
         
         // --- Utility ---
         function showNotification(message) {
@@ -290,7 +291,6 @@
         }
         
         async function joinRoom(roomId) {
-            // Ensure userId is available before joining
             if (!userId) {
                 showNotification("Đang xác thực, vui lòng đợi một lát...");
                 return;
@@ -303,11 +303,12 @@
                 gameRoomId.textContent = roomId;
                 gameStatus.textContent = 'Đang tham gia phòng...';
                 
-                // Set a timeout for joining the room
                 joinTimeout = setTimeout(() => {
-                    showNotification("Không thể vào phòng. Vui lòng thử lại!");
-                    goToLobby();
-                }, 10000); // 10 seconds timeout
+                    if (myPlayerIndex === null) {
+                        showNotification("Không thể vào phòng. Vui lòng thử lại!");
+                        goToLobby();
+                    }
+                }, 10000);
 
                 await runTransaction(db, async (transaction) => {
                     const roomDoc = await transaction.get(roomRef);
@@ -352,17 +353,6 @@
         }
 
         // --- Game Logic & Validation ---
-        function isGameDataValid(state) {
-            if (!state || !state.players || !Array.isArray(state.players)) return false;
-            // During 'waiting', it's ok to have one null player.
-            if (state.status === 'waiting') return true;
-            // For any other active game state, both players must be present and have an ID.
-            if (!state.players[0] || !state.players[1] || !state.players[0].id || !state.players[1].id) {
-                return false;
-            }
-            return true;
-        }
-
         function listenToGame(roomId) {
             if (gameUnsubscribe) gameUnsubscribe();
             const roomRef = doc(db, roomsCollectionPath, `room-${roomId}`);
@@ -373,13 +363,6 @@
                     if (gameState.players && !Array.isArray(gameState.players)) {
                         const playersMap = gameState.players;
                         gameState.players = [playersMap['0'] || null, playersMap['1'] || null];
-                    }
-
-                    // For active games, if data becomes invalid, go to lobby
-                    if (gameState.status !== 'waiting' && !isGameDataValid(gameState)) {
-                        showNotification("Phòng bị lỗi hoặc có người chơi thoát. Về sảnh chờ.");
-                        goToLobby();
-                        return;
                     }
                     
                     updateGameUI();
@@ -406,7 +389,6 @@
                 return;
             }
             
-            // Successfully joined, clear the timeout
             if (joinTimeout) clearTimeout(joinTimeout);
 
             const opponentIndex = 1 - myPlayerIndex;
