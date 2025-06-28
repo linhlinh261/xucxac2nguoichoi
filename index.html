@@ -652,6 +652,7 @@ renderPlayerBox(player2Info, gameState.players[1], myPlayerIndex === 1);
                 showNotification("Vui lòng nhập tên của bạn.");
                 return;
             }
+            console.log('userId before goToLobby:', userId);
             goToLobby();
         });
 
@@ -664,6 +665,7 @@ renderPlayerBox(player2Info, gameState.players[1], myPlayerIndex === 1);
             onAuthStateChanged(auth, user => {
                 if (user) {
                     userId = user.uid;
+                    console.log('userId set:', userId);
                     enterLobbyBtn.disabled = false;
                     enterLobbyBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
                     enterLobbyBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
