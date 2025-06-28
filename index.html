@@ -156,6 +156,7 @@
         let lobbyUnsubscribe = null;
         let gameUnsubscribe = null;
         let userId;
+        let joinTimeout = null;
 
         // --- Constants ---
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'dice-game-2024';
@@ -166,7 +167,7 @@
             const toast = document.getElementById('notification-toast');
             toast.textContent = message;
             toast.classList.remove('opacity-0');
-            setTimeout(() => toast.classList.add('opacity-0'), 3000);
+            setTimeout(() => toast.classList.add('opacity-0'), 4000);
         }
 
         function createDiceDots(face) {
@@ -184,6 +185,7 @@
         }
 
         async function goToLobby() {
+            if (joinTimeout) clearTimeout(joinTimeout);
             if (gameUnsubscribe) gameUnsubscribe();
             gameUnsubscribe = null;
             currentRoomId = null;
@@ -288,14 +290,24 @@
         }
         
         async function joinRoom(roomId) {
+            // Ensure userId is available before joining
+            if (!userId) {
+                showNotification("Đang xác thực, vui lòng đợi một lát...");
+                return;
+            }
+
             const roomRef = doc(db, roomsCollectionPath, `room-${roomId}`);
             
             try {
-                // We show the game view immediately, with a loading state.
                 showView(gameView);
                 gameRoomId.textContent = roomId;
                 gameStatus.textContent = 'Đang tham gia phòng...';
-
+                
+                // Set a timeout for joining the room
+                joinTimeout = setTimeout(() => {
+                    showNotification("Không thể vào phòng. Vui lòng thử lại!");
+                    goToLobby();
+                }, 10000); // 10 seconds timeout
 
                 await runTransaction(db, async (transaction) => {
                     const roomDoc = await transaction.get(roomRef);
@@ -335,11 +347,22 @@
             } catch (e) {
                 console.error("Join room failed: ", e);
                 showNotification(e.message);
-                goToLobby(); // Go back to lobby if join fails
+                goToLobby(); 
             }
         }
 
-        // --- Game Logic ---
+        // --- Game Logic & Validation ---
+        function isGameDataValid(state) {
+            if (!state || !state.players || !Array.isArray(state.players)) return false;
+            // During 'waiting', it's ok to have one null player.
+            if (state.status === 'waiting') return true;
+            // For any other active game state, both players must be present and have an ID.
+            if (!state.players[0] || !state.players[1] || !state.players[0].id || !state.players[1].id) {
+                return false;
+            }
+            return true;
+        }
+
         function listenToGame(roomId) {
             if (gameUnsubscribe) gameUnsubscribe();
             const roomRef = doc(db, roomsCollectionPath, `room-${roomId}`);
@@ -352,6 +375,13 @@
                         gameState.players = [playersMap['0'] || null, playersMap['1'] || null];
                     }
 
+                    // For active games, if data becomes invalid, go to lobby
+                    if (gameState.status !== 'waiting' && !isGameDataValid(gameState)) {
+                        showNotification("Phòng bị lỗi hoặc có người chơi thoát. Về sảnh chờ.");
+                        goToLobby();
+                        return;
+                    }
+                    
                     updateGameUI();
                 } else {
                     showNotification("Chủ phòng đã rời đi. Quay về sảnh chờ.");
@@ -369,14 +399,15 @@
             myPlayerIndex = gameState.players.findIndex(p => p && p.id === userId);
             
             if (myPlayerIndex === -1) {
-                // This is the race condition state. We've joined, but the first data snapshot
-                // we receive doesn't have us in it yet. We just wait for the next one.
                 gameStatus.textContent = 'Đang đồng bộ...';
                 [rpsView, bettingView, diceRollView, resultView].forEach(v => v.classList.add('hidden'));
                 player1Info.innerHTML = `<h3 class="font-bold text-lg">Đang tải...</h3>`;
                 player2Info.innerHTML = `<h3 class="font-bold text-lg">Đang tải...</h3>`;
                 return;
             }
+            
+            // Successfully joined, clear the timeout
+            if (joinTimeout) clearTimeout(joinTimeout);
 
             const opponentIndex = 1 - myPlayerIndex;
             const me = gameState.players[myPlayerIndex];
@@ -736,4 +767,4 @@
         })();
     </script>
 </body>
-</ht
+</html>
