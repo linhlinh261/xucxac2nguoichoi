@@ -115,10 +115,10 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, onSnapshot, updateDoc, collection, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, collection, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // --- Firebase Initialization ---
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const firebaseConfig = JSON.parse(window.__firebase_config);
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
@@ -319,11 +319,16 @@
             const roomRef = doc(db, roomsCollectionPath, `room-${roomId}`);
             gameUnsubscribe = onSnapshot(roomRef, (doc) => {
                 if (doc.exists()) {
+                    const oldStatus = gameState?.status;
                     gameState = doc.data();
                     if (myPlayerIndex === null) {
                         myPlayerIndex = gameState.players.findIndex(p => p && p.id === userId);
                     }
                     updateGameUI();
+                    
+                    if (oldStatus === 'results' && gameState.status === 'betting') {
+                         // This check is implicitly handled by the new transaction logic.
+                    }
                 } else {
                     showNotification("Chủ phòng đã rời đi. Quay về sảnh chờ.");
                     goToLobby();
@@ -381,8 +386,9 @@
                 case 'rolling': handleRollingUI(); break;
                 case 'results': handleResultUI(me); break;
             }
-
-            checkAndResetForRematch();
+             if (gameState.status === 'results' && me?.wantsRematch && opponent?.wantsRematch) {
+                 checkAndResetForRematch();
+             }
         }
         
         function handleRPSUI(me, opponent) {
@@ -392,7 +398,7 @@
              rpsChoices.classList.remove('hidden');
              const rpsMap = { r: 'Búa ✊', p: 'Bao ✋', s: 'Kéo ✂️' };
 
-             if (me.rpsChoice && opponent?.rpsChoice) {
+             if (me?.rpsChoice && opponent?.rpsChoice) {
                  rpsChoices.classList.add('hidden');
                  const winnerId = determineRPSWinner();
                  if (winnerId === -1) {
@@ -407,7 +413,7 @@
                      if (myPlayerIndex === winnerId) continueBtn.classList.remove('hidden');
                      else gameStatus.textContent = `Đang chờ ${winnerName} tiếp tục...`;
                  }
-             } else if (me.rpsChoice) {
+             } else if (me?.rpsChoice) {
                  gameStatus.textContent = `Đã chọn. Đang chờ ${opponent?.name || 'đối thủ'}...`;
                  rpsChoices.classList.add('hidden');
              } else {
@@ -453,7 +459,7 @@
             else if (winnerId === -1) winnerText.textContent = 'Cả hai người chơi đều đoán trúng! Mỗi người 1 điểm.';
             else winnerText.textContent = `${gameState.players[winnerId]?.name || 'Người chơi'} đã thắng vòng này và được 1 điểm!`;
 
-            if (me.wantsRematch) {
+            if (me?.wantsRematch) {
                 playAgainBtn.textContent = 'Đang chờ đối thủ...';
                 playAgainBtn.disabled = true;
             } else {
@@ -552,7 +558,9 @@
         }
         
         playAgainBtn.addEventListener('click', async () => {
-            await updatePlayerState('wantsRematch', true);
+            if(gameState.status === 'results') {
+                await updatePlayerState('wantsRematch', true);
+            }
         });
         
         async function checkAndResetForRematch() {
@@ -574,21 +582,7 @@
                             return;
                         }
                         
-                        const p1 = roomData.players[0];
-                        const p2 = roomData.players[1];
-
-                        // FIX: Ensure player objects and their properties are valid before creating new state
-                        if (!p1 || !p2 || typeof p1.name === 'undefined' || typeof p2.name === 'undefined') {
-                            console.error("Dữ liệu người chơi không hợp lệ, không thể chơi lại.");
-                            return; // Abort if data is corrupted
-                        }
-
                         const nextTurn = roomData.roundWinner !== null && roomData.roundWinner !== -1 ? roomData.roundWinner : roomData.rpsWinner;
-
-                        const newPlayers = [
-                            { id: p1.id, name: p1.name, score: Number.isFinite(p1.score) ? p1.score : 0, rpsChoice: null, bet: null, wantsRematch: false },
-                            { id: p2.id, name: p2.name, score: Number.isFinite(p2.score) ? p2.score : 0, rpsChoice: null, bet: null, wantsRematch: false }
-                        ];
 
                         transaction.update(roomRef, {
                             status: 'betting',
@@ -597,7 +591,12 @@
                             diceResult: null,
                             roundWinner: null,
                             diceFaces: null,
-                            players: newPlayers
+                            'players.0.bet': null,
+                            'players.0.wantsRematch': false,
+                            'players.0.rpsChoice': null,
+                            'players.1.bet': null,
+                            'players.1.wantsRematch': false,
+                            'players.1.rpsChoice': null,
                         });
                     });
                 } catch (e) {
@@ -618,10 +617,10 @@
                  circle.textContent = i;
                  let opponentBet = opponent?.bet;
                  let classes = 'bet-circle w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold border-4 transition ';
-                 if (i === me.bet) classes += 'selected-by-me ';
+                 if (i === me?.bet) classes += 'selected-by-me ';
                  else if (i === opponentBet) classes += 'selected-by-opponent ';
                  else classes += 'bg-white border-gray-300 ';
-                 if (myTurn && !me.bet && i !== opponentBet) {
+                 if (myTurn && !me?.bet && i !== opponentBet) {
                      classes += 'hover:bg-blue-200 cursor-pointer';
                      circle.disabled = false;
                  } else {
