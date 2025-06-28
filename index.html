@@ -174,7 +174,6 @@
             for (let i = 0; i < face; i++) {
                 dots += `<div class="dot-container"><div class="dot"></div></div>`;
             }
-            // The classes dot-1, dot-2 etc. are defined in the <style> tag
             return `<div class="dice bg-white shadow-md dot-${face}">${dots}</div>`;
         }
 
@@ -197,7 +196,7 @@
         }
         
         async function leaveRoom() {
-            if (!currentRoomId || userId === null) return goToLobby();
+            if (!currentRoomId || !userId) return goToLobby();
 
             const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
             try {
@@ -205,32 +204,35 @@
                     const roomDoc = await transaction.get(roomRef);
                     if (!roomDoc.exists()) return;
 
-                    const roomData = roomDoc.data();
+                    let roomData = roomDoc.data();
                     
-                    const leavingPlayerIndex = roomData.players.findIndex(p => p && p.id === userId);
-                    if (leavingPlayerIndex === -1) {
-                        return; // Player not in room, nothing to do
+                    let playersArray = roomData.players;
+                    if (playersArray && !Array.isArray(playersArray)) {
+                        playersArray = [playersArray['0'] || null, playersArray['1'] || null];
                     }
-                    
-                    // If player is alone in room, or something is out of sync, just delete the room.
-                    if (roomData.playerCount <= 1) {
+
+                    if (!playersArray) {
                         transaction.delete(roomRef);
                         return;
                     }
-
-                    // Create a new players array, setting the leaving player's slot to null
-                    const newPlayers = [...roomData.players];
-                    newPlayers[leavingPlayerIndex] = null;
-
-                    // Update the room state
-                    transaction.update(roomRef, {
-                        players: newPlayers,
-                        playerCount: roomData.playerCount - 1,
-                        status: 'waiting'
-                    });
+                    
+                    const newPlayers = playersArray.filter(p => p && p.id !== userId);
+                    
+                    if (newPlayers.length === 0) {
+                        transaction.delete(roomRef);
+                    } else {
+                        const finalPlayers = [newPlayers[0], null];
+                        transaction.set(roomRef, {
+                            ...roomData,
+                            players: finalPlayers,
+                            playerCount: 1,
+                            status: 'waiting'
+                        });
+                    }
                 });
             } catch (error) {
                 console.error("Error leaving room: ", error);
+                showNotification("Lỗi khi rời phòng.");
             } finally {
                 goToLobby();
             }
@@ -294,17 +296,19 @@
                     let roomData;
 
                     if (!roomDoc.exists()) {
-                        // Create a new room if it doesn't exist
                         roomData = {
                             id: roomId,
                             players: [{ id: userId, name: localPlayerName, score: 0, rpsChoice: null, bet: null, wantsRematch: false }, null],
                             playerCount: 1,
                             status: 'waiting',
                         };
-                        myPlayerIndex = 0;
                     } else {
-                        // Join an existing room
                         roomData = roomDoc.data();
+
+                        if (roomData.players && !Array.isArray(roomData.players)) {
+                            roomData.players = [roomData.players['0'] || null, roomData.players['1'] || null];
+                        }
+
                         if (roomData.playerCount >= 2) {
                             throw new Error("Phòng đã đầy!");
                         }
@@ -312,9 +316,8 @@
                         if (emptySlot === -1) throw new Error("Phòng đầy nhưng playerCount không chính xác.");
                         
                         roomData.players[emptySlot] = { id: userId, name: localPlayerName, score: 0, rpsChoice: null, bet: null, wantsRematch: false };
-                        myPlayerIndex = emptySlot;
                         roomData.playerCount++;
-                        if(roomData.playerCount === 2) roomData.status = 'rps'; // Start Rock-Paper-Scissors
+                        if(roomData.playerCount === 2) roomData.status = 'rps';
                     }
                     transaction.set(roomRef, roomData);
                 });
@@ -338,7 +341,6 @@
                 if (doc.exists()) {
                     gameState = doc.data();
 
-                    // Defensively ensure gameState.players is always an array
                     if (gameState.players && !Array.isArray(gameState.players)) {
                         const playersMap = gameState.players;
                         gameState.players = [playersMap['0'] || null, playersMap['1'] || null];
@@ -358,7 +360,6 @@
             myPlayerIndex = gameState.players.findIndex(p => p && p.id === userId);
             
             if (myPlayerIndex === -1) {
-                // FIX: Guard against race condition on joining a room.
                 const isWaitingForPlayers = gameState.status === 'waiting' || gameState.status === 'rps';
                 const hasEmptySlot = gameState.players.some(p => p === null);
 
@@ -689,44 +690,33 @@
         });
 
         (async () => {
-            // This listener simply keeps the `userId` variable in sync.
             onAuthStateChanged(auth, user => {
-                userId = user ? user.uid : null;
+                if (user) {
+                    userId = user.uid;
+                    enterLobbyBtn.disabled = false;
+                    enterLobbyBtn.textContent = 'Vào Sảnh Chờ';
+                    enterLobbyBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
+                    enterLobbyBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                } else {
+                    userId = null;
+                    enterLobbyBtn.disabled = true;
+                    enterLobbyBtn.textContent = 'Lỗi kết nối';
+                    enterLobbyBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
+                    enterLobbyBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                }
             });
 
-            // Disable the button while we figure out authentication
             enterLobbyBtn.disabled = true;
             enterLobbyBtn.textContent = 'Đang kết nối...';
             enterLobbyBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
             enterLobbyBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
 
             try {
-                const token = (typeof __initial_auth_token === 'string' && __initial_auth_token) ? __initial_auth_token : null;
-                if (token) {
-                    await signInWithCustomToken(auth, token);
-                } else {
+                if (!auth.currentUser) {
                     await signInAnonymously(auth);
                 }
             } catch (error) {
-                console.error("Lỗi đăng nhập token, đang thử lại ẩn danh:", error);
-                try {
-                    // Attempt the fallback only if we're not already signed in.
-                    if (!auth.currentUser) {
-                        await signInAnonymously(auth);
-                    }
-                } catch (fallbackError) {
-                     console.error("Lỗi đăng nhập ẩn danh:", fallbackError);
-                }
-            }
-
-            // Finally, update the UI based on the final authentication state.
-            if (auth.currentUser) {
-                enterLobbyBtn.disabled = false;
-                enterLobbyBtn.textContent = 'Vào Sảnh Chờ';
-                enterLobbyBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
-                enterLobbyBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
-            } else {
-                enterLobbyBtn.textContent = 'Lỗi kết nối';
+                console.error("Lỗi đăng nhập ẩn danh:", error);
                 showNotification("Không thể kết nối. Vui lòng làm mới trang.");
             }
 
