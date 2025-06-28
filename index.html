@@ -303,7 +303,12 @@
                 });
 
                 if(lobbyUnsubscribe) lobbyUnsubscribe();
-                currentRoomId = roomId;
+               currentRoomId = roomId;
+const roomSnap = await getDoc(roomRef);
+if (roomSnap.exists()) {
+  const roomData = roomSnap.data();
+  myPlayerIndex = roomData.players.findIndex(p => p && p.id === userId);
+}
                 listenToGame(roomId);
                 showView(gameView);
 
