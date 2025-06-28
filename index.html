@@ -285,7 +285,6 @@
                             playerCount: 1,
                             status: 'waiting',
                         };
-                        myPlayerIndex = 0;
                     } else {
                         roomData = roomDoc.data();
                         if (roomData.playerCount >= 2) {
@@ -295,7 +294,6 @@
                         if (emptySlot === -1) throw new Error("Phòng đầy nhưng playerCount không chính xác.");
                         
                         roomData.players[emptySlot] = { id: userId, name: localPlayerName, score: 0, rpsChoice: null, bet: null, wantsRematch: false };
-                        myPlayerIndex = emptySlot;
                         roomData.playerCount++;
                         if(roomData.playerCount === 2) roomData.status = 'rps';
                     }
@@ -303,12 +301,7 @@
                 });
 
                 if(lobbyUnsubscribe) lobbyUnsubscribe();
-               currentRoomId = roomId;
-const roomSnap = await getDoc(roomRef);
-if (roomSnap.exists()) {
-  const roomData = roomSnap.data();
-  myPlayerIndex = roomData.players.findIndex(p => p && p.id === userId);
-}
+                currentRoomId = roomId;
                 listenToGame(roomId);
                 showView(gameView);
 
@@ -319,62 +312,66 @@ if (roomSnap.exists()) {
         }
 
         // --- Game Logic ---
-     function listenToGame(roomId) {
-    if (gameUnsubscribe) gameUnsubscribe();
-    const roomRef = doc(db, roomsCollectionPath, `room-${roomId}`);
-    gameUnsubscribe = onSnapshot(roomRef, (doc) => {
-        if (doc.exists()) {
-            const oldStatus = gameState?.status;
-            gameState = doc.data();
-            // KHÔNG set myPlayerIndex ở đây!
-            updateGameUI();
-            // ...
-        } else {
-            showNotification("Chủ phòng đã rời đi. Quay về sảnh chờ.");
-            goToLobby();
+        function listenToGame(roomId) {
+            if (gameUnsubscribe) gameUnsubscribe();
+            const roomRef = doc(db, roomsCollectionPath, `room-${roomId}`);
+            gameUnsubscribe = onSnapshot(roomRef, (doc) => {
+                if (doc.exists()) {
+                    gameState = doc.data();
+                    updateGameUI();
+                } else {
+                    showNotification("Chủ phòng đã rời đi. Quay về sảnh chờ.");
+                    goToLobby();
+                }
+            });
         }
-    });
-}
+        
+        // FIX: Re-architected the UI update function to be more robust.
+        function updateGameUI() {
+            if (!gameState || !Array.isArray(gameState.players)) {
+                return; // Wait for valid game state
+            }
+            
+            myPlayerIndex = gameState.players.findIndex(p => p && p.id === userId);
 
-       function updateGameUI() {
-    if (!gameState || !gameState.players) return;
-    myPlayerIndex = gameState.players.findIndex(p => p && p.id === userId);
-    if (myPlayerIndex === -1 || myPlayerIndex === null) {
-        console.log("userId", userId, "players", gameState.players);
-            goToLobby();
-        return;
-    }
-    const opponentIndex = 1 - myPlayerIndex;
-    const me = gameState.players[myPlayerIndex];
-    const opponent = gameState.players[opponentIndex];
+            if (myPlayerIndex === -1) {
+                 // If I'm not in the game anymore (e.g. opponent left and I was kicked), go to lobby.
+                if (currentRoomId) { 
+                    goToLobby();
+                }
+                return;
+            }
 
-    gameRoomId.textContent = currentRoomId;
+            const me = gameState.players[myPlayerIndex];
+            const opponent = gameState.players[1 - myPlayerIndex];
+            
+            gameRoomId.textContent = currentRoomId;
 
-
-         function renderPlayerBox(el, player, isMe) {
-    if (!player) {
-        el.innerHTML = `<h3 class="font-bold text-lg">Đang chờ...</h3>`;
-        return;
-    }
-    const rpsMap = { r: '✊', p: '✋', s: '✂️' };
-    let rpsDisplay = '';
-    if (player.rpsChoice && gameState.status === 'rps') {
-        if (gameState.players[0]?.rpsChoice && gameState.players[1]?.rpsChoice) {
-            rpsDisplay = `<p class="mt-1">Ra: <span class="text-2xl">${rpsMap[player.rpsChoice]}</span></p>`;
-        } else {
-            rpsDisplay = `<p class="mt-1">Ra: <span class="text-xl font-bold text-gray-500">Đã chọn</span></p>`;
-        }
-    }
-    const displayName = player.name ? (isMe ? player.name + " (Bạn)" : player.name) : (isMe ? "Bạn" : "Người chơi");
-    el.innerHTML = `
-        <h3 class="text-lg font-bold">${displayName}</h3>
-        <p class="text-2xl font-black text-indigo-600">${Number.isFinite(player.score) ? player.score : 0} Điểm</p>
-        ${player.bet ? `<p class="mt-1">Đã cược: <span class="font-bold text-xl">${player.bet}</span></p>` : ''}
-        ${rpsDisplay}
-    `;
-}
-           renderPlayerBox(player1Info, gameState.players[0], myPlayerIndex === 0);
-renderPlayerBox(player2Info, gameState.players[1], myPlayerIndex === 1);
+            const renderPlayerBox = (el, player, isMe) => {
+                if (!player) {
+                    el.innerHTML = `<h3 class="font-bold text-lg">Đang chờ...</h3><p class="text-2xl font-black text-indigo-600">0 Điểm</p>`;
+                    return;
+                }
+                const rpsMap = { r: '✊', p: '✋', s: '✂️' };
+                let rpsDisplay = '';
+                if (player.rpsChoice && gameState.status === 'rps') {
+                    if (gameState.players[0]?.rpsChoice && gameState.players[1]?.rpsChoice) {
+                        rpsDisplay = `<p class="mt-1">Ra: <span class="text-2xl">${rpsMap[player.rpsChoice]}</span></p>`;
+                    } else {
+                        rpsDisplay = `<p class="mt-1">Ra: <span class="text-xl font-bold text-gray-500">Đã chọn</span></p>`;
+                    }
+                }
+                const displayName = player.name ? (isMe ? player.name + " (Bạn)" : player.name) : (isMe ? "Bạn" : "Người chơi");
+                el.innerHTML = `
+                    <h3 class="text-lg font-bold">${displayName}</h3>
+                    <p class="text-2xl font-black text-indigo-600">${Number.isFinite(player.score) ? player.score : 0} Điểm</p>
+                    ${player.bet ? `<p class="mt-1">Đã cược: <span class="font-bold text-xl">${player.bet}</span></p>` : ''}
+                    ${rpsDisplay}
+                `;
+            };
+            
+            renderPlayerBox(player1Info, gameState.players[0], myPlayerIndex === 0);
+            renderPlayerBox(player2Info, gameState.players[1], myPlayerIndex === 1);
 
             [rpsView, bettingView, diceRollView, resultView].forEach(v => v.classList.add('hidden'));
 
@@ -387,7 +384,8 @@ renderPlayerBox(player2Info, gameState.players[1], myPlayerIndex === 1);
                 case 'rolling': handleRollingUI(); break;
                 case 'results': handleResultUI(me); break;
             }
-             if (gameState.status === 'results' && me?.wantsRematch && opponent?.wantsRematch) {
+
+            if (gameState.status === 'results' && me?.wantsRematch && opponent?.wantsRematch) {
                  checkAndResetForRematch();
              }
         }
@@ -656,7 +654,6 @@ renderPlayerBox(player2Info, gameState.players[1], myPlayerIndex === 1);
                 showNotification("Vui lòng nhập tên của bạn.");
                 return;
             }
-            console.log('userId before goToLobby:', userId);
             goToLobby();
         });
 
@@ -669,7 +666,6 @@ renderPlayerBox(player2Info, gameState.players[1], myPlayerIndex === 1);
             onAuthStateChanged(auth, user => {
                 if (user) {
                     userId = user.uid;
-                    console.log('userId set:', userId);
                     enterLobbyBtn.disabled = false;
                     enterLobbyBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
                     enterLobbyBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
