@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="vi">myPlayerIndex
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -314,63 +314,64 @@
         }
 
         // --- Game Logic ---
-        function listenToGame(roomId) {
-            if (gameUnsubscribe) gameUnsubscribe();
-            const roomRef = doc(db, roomsCollectionPath, `room-${roomId}`);
-            gameUnsubscribe = onSnapshot(roomRef, (doc) => {
-                if (doc.exists()) {
-                    const oldStatus = gameState?.status;
-                    gameState = doc.data();
-                    if (myPlayerIndex === null) {
-                        myPlayerIndex = gameState.players.findIndex(p => p && p.id === userId);
-                    }
-                    updateGameUI();
-                    
-                    if (oldStatus === 'results' && gameState.status === 'betting') {
-                         // This check is implicitly handled by the new transaction logic.
-                    }
-                } else {
-                    showNotification("Chủ phòng đã rời đi. Quay về sảnh chờ.");
-                    goToLobby();
-                }
-            });
+     function listenToGame(roomId) {
+    if (gameUnsubscribe) gameUnsubscribe();
+    const roomRef = doc(db, roomsCollectionPath, `room-${roomId}`);
+    gameUnsubscribe = onSnapshot(roomRef, (doc) => {
+        if (doc.exists()) {
+            const oldStatus = gameState?.status;
+            gameState = doc.data();
+            // KHÔNG set myPlayerIndex ở đây!
+            updateGameUI();
+            // ...
+        } else {
+            showNotification("Chủ phòng đã rời đi. Quay về sảnh chờ.");
+            goToLobby();
         }
-        
-        function updateGameUI() {
-             if (!gameState || !gameState.players || myPlayerIndex === -1 || myPlayerIndex === null) {
-                if(currentRoomId) {
-                    showNotification("Bạn đã bị ngắt kết nối khỏi phòng.");
-                    goToLobby();
-                }
-                return;
-            }
+    });
+}
 
-            const me = gameState.players[myPlayerIndex];
-            const opponent = gameState.players[1 - myPlayerIndex];
-            
-            gameRoomId.textContent = currentRoomId;
+       function updateGameUI() {
+    if (!gameState || !gameState.players) return;
+    myPlayerIndex = gameState.players.findIndex(p => p && p.id === userId);
+    if (myPlayerIndex === -1 || myPlayerIndex === null) {
+        if(currentRoomId) {
+            showNotification("Bạn đã bị ngắt kết nối khỏi phòng.");
+            goToLobby();
+        }
+        return;
+    }
+    const opponentIndex = 1 - myPlayerIndex;
+    const me = gameState.players[myPlayerIndex];
+    const opponent = gameState.players[opponentIndex];
 
-          const renderPlayerBox = (el, player) => {
-    const displayName = (player && player.name) ? player.name : 'Người chơi';
+    gameRoomId.textContent = currentRoomId;
+
+
+         function renderPlayerBox(el, player, isMe) {
+    if (!player) {
+        el.innerHTML = `<h3 class="font-bold text-lg">Đang chờ...</h3>`;
+        return;
+    }
     const rpsMap = { r: '✊', p: '✋', s: '✂️' };
     let rpsDisplay = '';
-    if (player && player.rpsChoice && gameState.status === 'rps') {
+    if (player.rpsChoice && gameState.status === 'rps') {
         if (gameState.players[0]?.rpsChoice && gameState.players[1]?.rpsChoice) {
             rpsDisplay = `<p class="mt-1">Ra: <span class="text-2xl">${rpsMap[player.rpsChoice]}</span></p>`;
         } else {
             rpsDisplay = `<p class="mt-1">Ra: <span class="text-xl font-bold text-gray-500">Đã chọn</span></p>`;
         }
     }
+    const displayName = player.name ? (isMe ? player.name + " (Bạn)" : player.name) : (isMe ? "Bạn" : "Người chơi");
     el.innerHTML = `
         <h3 class="text-lg font-bold">${displayName}</h3>
         <p class="text-2xl font-black text-indigo-600">${Number.isFinite(player.score) ? player.score : 0} Điểm</p>
         ${player.bet ? `<p class="mt-1">Đã cược: <span class="font-bold text-xl">${player.bet}</span></p>` : ''}
         ${rpsDisplay}
     `;
-};
-            
-           renderPlayerBox(player1Info, gameState.players[0]);
-renderPlayerBox(player2Info, gameState.players[1]);
+}
+           renderPlayerBox(player1Info, gameState.players[0], myPlayerIndex === 0);
+renderPlayerBox(player2Info, gameState.players[1], myPlayerIndex === 1);
 
             [rpsView, bettingView, diceRollView, resultView].forEach(v => v.classList.add('hidden'));
 
