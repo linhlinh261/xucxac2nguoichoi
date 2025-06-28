@@ -337,6 +337,14 @@
             gameUnsubscribe = onSnapshot(roomRef, (doc) => {
                 if (doc.exists()) {
                     gameState = doc.data();
+
+                    // FIX: Defensively ensure gameState.players is always an array
+                    // Firestore can sometimes return array-like objects instead of true arrays.
+                    if (gameState.players && !Array.isArray(gameState.players)) {
+                        const playersMap = gameState.players;
+                        gameState.players = [playersMap['0'] || null, playersMap['1'] || null];
+                    }
+
                     updateGameUI();
                 } else {
                     showNotification("Chủ phòng đã rời đi. Quay về sảnh chờ.");
