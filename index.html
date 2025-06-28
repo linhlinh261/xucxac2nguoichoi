@@ -350,9 +350,8 @@
             
             gameRoomId.textContent = currentRoomId;
 
-           const renderPlayerBox = (el, player, isMe) => {
-    // Use localPlayerName for my slot if name is missing
-    let displayName = player && player.name ? player.name : (isMe && localPlayerName ? localPlayerName : 'Người chơi');
+          const renderPlayerBox = (el, player) => {
+    const displayName = (player && player.name) ? player.name : 'Người chơi';
     const rpsMap = { r: '✊', p: '✋', s: '✂️' };
     let rpsDisplay = '';
     if (player && player.rpsChoice && gameState.status === 'rps') {
@@ -370,8 +369,8 @@
     `;
 };
             
-            renderPlayerBox(player1Info, gameState.players[0], myPlayerIndex === 0);
-            renderPlayerBox(player2Info, gameState.players[1], myPlayerIndex === 1);
+           renderPlayerBox(player1Info, gameState.players[0]);
+renderPlayerBox(player2Info, gameState.players[1]);
 
             [rpsView, bettingView, diceRollView, resultView].forEach(v => v.classList.add('hidden'));
 
