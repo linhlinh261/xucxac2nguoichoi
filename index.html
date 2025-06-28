@@ -8,15 +8,17 @@
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <!-- Firebase -->
     <script>
-        // Use user-provided Firebase config
-        window.__firebase_config = JSON.stringify({
-            apiKey: "AIzaSyCUrFw_GAv5bIGfwFfuiwCuBcjaNqFohVs",
-            authDomain: "tonghaixucxac.firebaseapp.com",
-            projectId: "tonghaixucxac",
-            storageBucket: "tonghaixucxac.firebasestorage.app",
-            messagingSenderId: "282682257745",
-            appId: "1:282682257745:web:b1d53ac3f903d95be8a370",
-        });
+        // Use user-provided Firebase config if available, otherwise use a placeholder
+        if (typeof __firebase_config === 'undefined') {
+          window.__firebase_config = JSON.stringify({
+              apiKey: "AIzaSyCUrFw_GAv5bIGfwFfuiwCuBcjaNqFohVs",
+              authDomain: "tonghaixucxac.firebaseapp.com",
+              projectId: "tonghaixucxac",
+              storageBucket: "tonghaixucxac.firebasestorage.app",
+              messagingSenderId: "282682257745",
+              appId: "1:282682257745:web:b1d53ac3f903d95be8a370",
+          });
+        }
     </script>
     <style>
         body { font-family: 'Roboto', sans-serif; }
@@ -25,6 +27,7 @@
         .dice { width: 80px; height: 80px; padding: 10px; border-radius: 12px; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 5px; }
         .dot { width: 14px; height: 14px; background-color: black; border-radius: 50%; }
         .dot-container { display: flex; justify-content: center; align-items: center; }
+        /* Grid areas for each dot position */
         .dot-1 > .dot-container:nth-child(1) { grid-area: 2 / 2; }
         .dot-2 > .dot-container:nth-child(1) { grid-area: 1 / 1; } .dot-2 > .dot-container:nth-child(2) { grid-area: 3 / 3; }
         .dot-3 > .dot-container:nth-child(1) { grid-area: 1 / 1; } .dot-3 > .dot-container:nth-child(2) { grid-area: 2 / 2; } .dot-3 > .dot-container:nth-child(3) { grid-area: 3 / 3; }
@@ -114,14 +117,16 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, collection, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
+        // --- Firebase Initialization ---
         const firebaseConfig = JSON.parse(window.__firebase_config);
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
 
+        // --- UI Elements ---
         const nameView = document.getElementById('name-view');
         const lobbyView = document.getElementById('lobby-view');
         const gameView = document.getElementById('game-view');
@@ -143,6 +148,7 @@
         const rpsResultText = document.getElementById('rps-result-text');
         const continueBtn = document.getElementById('continue-btn');
 
+        // --- App State ---
         let localPlayerName = '';
         let currentRoomId = null;
         let myPlayerIndex = null;
@@ -151,9 +157,11 @@
         let gameUnsubscribe = null;
         let userId;
 
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        // --- Constants ---
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'dice-game-2024';
         const roomsCollectionPath = `/artifacts/${appId}/public/data/dice-game-rooms`;
         
+        // --- Utility ---
         function showNotification(message) {
             const toast = document.getElementById('notification-toast');
             toast.textContent = message;
@@ -166,9 +174,11 @@
             for (let i = 0; i < face; i++) {
                 dots += `<div class="dot-container"><div class="dot"></div></div>`;
             }
+            // The classes dot-1, dot-2 etc. are defined in the <style> tag
             return `<div class="dice bg-white shadow-md dot-${face}">${dots}</div>`;
         }
 
+        // --- Navigation & State Management ---
         function showView(view) {
             [nameView, lobbyView, gameView].forEach(v => v.classList.add('hidden'));
             view.classList.remove('hidden');
@@ -196,16 +206,19 @@
                     if (!roomDoc.exists()) return;
 
                     const roomData = roomDoc.data();
+                    // Filter out the current player
                     const newPlayers = roomData.players.filter(p => p && p.id !== userId);
                     
                     if (newPlayers.length === 0) {
+                        // If no players are left, delete the room
                         transaction.delete(roomRef);
                     } else {
+                        // Otherwise, update the player list and status
                         const newRoomData = {
                             ...roomData,
                             players: newPlayers.length === 1 ? [newPlayers[0], null] : [null, null],
                             playerCount: newPlayers.length,
-                            status: 'waiting'
+                            status: 'waiting' // Reset status to waiting
                         };
                          transaction.set(roomRef, newRoomData);
                     }
@@ -218,6 +231,7 @@
         }
         quitGameBtn.addEventListener('click', leaveRoom);
 
+        // --- Lobby Logic ---
         function listenToLobby() {
             if (lobbyUnsubscribe) lobbyUnsubscribe();
             const roomsRef = collection(db, roomsCollectionPath);
@@ -225,7 +239,9 @@
                 const roomsData = {};
                 snapshot.forEach(doc => {
                     const room = doc.data();
-                    roomsData[room.id] = room;
+                    if(room.id) {
+                       roomsData[room.id] = room;
+                    }
                 });
                 renderLobby(roomsData);
             });
@@ -272,13 +288,16 @@
                     let roomData;
 
                     if (!roomDoc.exists()) {
+                        // Create a new room if it doesn't exist
                         roomData = {
                             id: roomId,
                             players: [{ id: userId, name: localPlayerName, score: 0, rpsChoice: null, bet: null, wantsRematch: false }, null],
                             playerCount: 1,
                             status: 'waiting',
                         };
+                        myPlayerIndex = 0;
                     } else {
+                        // Join an existing room
                         roomData = roomDoc.data();
                         if (roomData.playerCount >= 2) {
                             throw new Error("Phòng đã đầy!");
@@ -287,14 +306,21 @@
                         if (emptySlot === -1) throw new Error("Phòng đầy nhưng playerCount không chính xác.");
                         
                         roomData.players[emptySlot] = { id: userId, name: localPlayerName, score: 0, rpsChoice: null, bet: null, wantsRematch: false };
+                        myPlayerIndex = emptySlot;
                         roomData.playerCount++;
-                        if(roomData.playerCount === 2) roomData.status = 'rps';
+                        if(roomData.playerCount === 2) roomData.status = 'rps'; // Start Rock-Paper-Scissors
                     }
                     transaction.set(roomRef, roomData);
                 });
 
                 if(lobbyUnsubscribe) lobbyUnsubscribe();
                 currentRoomId = roomId;
+                // We must read the player index again after joining to be sure.
+                const roomSnap = await getDoc(roomRef);
+                if (roomSnap.exists()) {
+                  const roomData = roomSnap.data();
+                  myPlayerIndex = roomData.players.findIndex(p => p && p.id === userId);
+                }
                 listenToGame(roomId);
                 showView(gameView);
 
@@ -304,6 +330,7 @@
             }
         }
 
+        // --- Game Logic ---
         function listenToGame(roomId) {
             if (gameUnsubscribe) gameUnsubscribe();
             const roomRef = doc(db, roomsCollectionPath, `room-${roomId}`);
@@ -317,32 +344,34 @@
                 }
             });
         }
-        
-        function updateGameUI() {
-            if (!gameState || !Array.isArray(gameState.players)) {
-                return;
-            }
-            
-            myPlayerIndex = gameState.players.findIndex(p => p && p.id === userId);
 
-            if (myPlayerIndex === -1 && currentRoomId) {
-                showNotification("Bạn đã bị ngắt kết nối khỏi phòng.");
+       function updateGameUI() {
+            if (!gameState || !gameState.players) return;
+            // Crucially, find my player index EVERY time the UI updates based on the latest state
+            myPlayerIndex = gameState.players.findIndex(p => p && p.id === userId);
+            
+            if (myPlayerIndex === -1) {
+                // If I'm no longer in the player list, it means I was kicked or left.
+                console.log("Player not found in game state, returning to lobby.");
                 goToLobby();
                 return;
             }
-            
+
+            const opponentIndex = 1 - myPlayerIndex;
             const me = gameState.players[myPlayerIndex];
-            const opponent = gameState.players[1 - myPlayerIndex];
-            
+            const opponent = gameState.players[opponentIndex];
+
             gameRoomId.textContent = currentRoomId;
 
-            const renderPlayerBox = (el, player, isMe) => {
+            // Helper to render a player's info box
+            function renderPlayerBox(el, player, isMe) {
                 if (!player) {
-                    el.innerHTML = `<h3 class="font-bold text-lg">Đang chờ...</h3><p class="text-2xl font-black text-indigo-600">0 Điểm</p>`;
+                    el.innerHTML = `<h3 class="font-bold text-lg">Đang chờ...</h3>`;
                     return;
                 }
                 const rpsMap = { r: '✊', p: '✋', s: '✂️' };
                 let rpsDisplay = '';
+                // Logic to display RPS choice status
                 if (player.rpsChoice && gameState.status === 'rps') {
                     if (gameState.players[0]?.rpsChoice && gameState.players[1]?.rpsChoice) {
                         rpsDisplay = `<p class="mt-1">Ra: <span class="text-2xl">${rpsMap[player.rpsChoice]}</span></p>`;
@@ -357,13 +386,14 @@
                     ${player.bet ? `<p class="mt-1">Đã cược: <span class="font-bold text-xl">${player.bet}</span></p>` : ''}
                     ${rpsDisplay}
                 `;
-            };
+            }
             
             renderPlayerBox(player1Info, gameState.players[0], myPlayerIndex === 0);
             renderPlayerBox(player2Info, gameState.players[1], myPlayerIndex === 1);
 
             [rpsView, bettingView, diceRollView, resultView].forEach(v => v.classList.add('hidden'));
 
+            // State machine for the game UI
             switch(gameState.status) {
                 case 'waiting':
                     gameStatus.textContent = 'Đang chờ người chơi thứ hai...';
@@ -373,6 +403,7 @@
                 case 'rolling': handleRollingUI(); break;
                 case 'results': handleResultUI(me); break;
             }
+            // Check for rematch agreement after results are shown
              if (gameState.status === 'results' && me?.wantsRematch && opponent?.wantsRematch) {
                  checkAndResetForRematch();
              }
@@ -386,24 +417,27 @@
              const rpsMap = { r: 'Búa ✊', p: 'Bao ✋', s: 'Kéo ✂️' };
 
              if (me?.rpsChoice && opponent?.rpsChoice) {
+                 // Both players made a choice
                  rpsChoices.classList.add('hidden');
                  const winnerId = determineRPSWinner();
-                 if (winnerId === -1) {
+                 if (winnerId === -1) { // Draw
                      rpsResultText.innerHTML = `Hòa! Cả hai cùng ra ${rpsMap[me.rpsChoice]}. Chơi lại!`;
-                     if (myPlayerIndex === 0) continueBtn.classList.remove('hidden');
+                     if (myPlayerIndex === 0) continueBtn.classList.remove('hidden'); // Host can reset
                      else gameStatus.textContent = 'Hòa! Đang chờ chủ phòng chơi lại...';
-                 } else {
+                 } else { // There is a winner
                      const winnerName = gameState.players[winnerId]?.name || `Người chơi ${winnerId + 1}`;
                      const p1Name = gameState.players[0]?.name || 'Người chơi 1';
                      const p2Name = gameState.players[1]?.name || 'Người chơi 2';
                      rpsResultText.innerHTML = `${p1Name} ra ${rpsMap[gameState.players[0].rpsChoice]}, ${p2Name} ra ${rpsMap[gameState.players[1].rpsChoice]}. <br> <span class="text-green-600">${winnerName} thắng và đi trước!</span>`;
-                     if (myPlayerIndex === winnerId) continueBtn.classList.remove('hidden');
+                     if (myPlayerIndex === winnerId) continueBtn.classList.remove('hidden'); // Winner can continue
                      else gameStatus.textContent = `Đang chờ ${winnerName} tiếp tục...`;
                  }
              } else if (me?.rpsChoice) {
+                 // Only I have made a choice
                  gameStatus.textContent = `Đã chọn. Đang chờ ${opponent?.name || 'đối thủ'}...`;
                  rpsChoices.classList.add('hidden');
              } else {
+                 // It's my turn to choose
                  gameStatus.textContent = 'Đến lượt bạn! Hãy ra Kéo, Búa, hoặc Bao.';
              }
         }
@@ -423,7 +457,7 @@
             diceRollView.classList.remove('hidden');
             document.getElementById('rolling-text').textContent = "Đang tung xúc xắc...";
             animateDice();
-            if (myPlayerIndex === 0) {
+            if (myPlayerIndex === 0) { // Only the host triggers the actual dice roll calculation
                  setTimeout(rollDice, 2500);
             }
         }
@@ -431,7 +465,7 @@
         function handleResultUI(me) {
             gameStatus.textContent = 'Vòng chơi kết thúc!';
             resultView.classList.remove('hidden');
-            bettingView.classList.remove('hidden');
+            bettingView.classList.remove('hidden'); // Show final bets
             renderBettingBoard();
             document.getElementById('dice-result-value').textContent = gameState.diceResult;
             if (gameState.diceFaces) {
@@ -469,20 +503,20 @@
         function determineRPSWinner() {
             const p1c = gameState.players[0]?.rpsChoice;
             const p2c = gameState.players[1]?.rpsChoice;
-            if (!p1c || !p2c) return null;
-            if (p1c === p2c) return -1;
-            if ((p1c === 'r' && p2c === 's') || (p1c === 's' && p2c === 'p') || (p1c === 'p' && p2c === 'r')) return 0;
-            return 1;
+            if (!p1c || !p2c) return null; // Not all choices are in
+            if (p1c === p2c) return -1; // Draw
+            if ((p1c === 'r' && p2c === 's') || (p1c === 's' && p2c === 'p') || (p1c === 'p' && p2c === 'r')) return 0; // Player 1 wins
+            return 1; // Player 2 wins
         }
         
         continueBtn.addEventListener('click', async () => {
              const winner = determineRPSWinner();
              const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
-             if (winner === -1) {
+             if (winner === -1) { // On draw, only host resets
                  if (myPlayerIndex === 0) {
                      await updateDoc(roomRef, { 'players.0.rpsChoice': null, 'players.1.rpsChoice': null });
                  }
-             } else {
+             } else { // On win, only winner progresses the game
                  if (myPlayerIndex === winner) {
                      await updateDoc(roomRef, { status: 'betting', turn: winner, rpsWinner: winner });
                  }
@@ -493,18 +527,19 @@
             const opponentIndex = 1 - myPlayerIndex;
             const updates = {
                 [`players.${myPlayerIndex}.bet`]: number,
-                turn: opponentIndex
+                turn: opponentIndex // Switch turn to the opponent
             };
             
+            // If the opponent has already placed their bet, it's time to roll
             if (gameState.players[opponentIndex] && gameState.players[opponentIndex].bet !== null) {
                 updates.status = 'rolling';
-                updates.turn = null;
+                updates.turn = null; // No one's turn during roll
             }
             await updateDoc(doc(db, roomsCollectionPath, `room-${currentRoomId}`), updates);
         }
 
         async function rollDice() {
-            if (myPlayerIndex !== 0) return;
+            if (myPlayerIndex !== 0) return; // Only host calculates result
             const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
             
             try {
@@ -514,7 +549,7 @@
                     
                     const currentRoomData = roomDoc.data();
                     if (!currentRoomData.players[0] || !currentRoomData.players[1]) {
-                        return;
+                        return; // Abort if a player left
                     }
 
                     const die1 = Math.floor(Math.random() * 6) + 1;
@@ -551,6 +586,7 @@
         });
         
         async function checkAndResetForRematch() {
+            // Only the host (player 0) can reset the game for a rematch
             if (
                 gameState.status === 'results' &&
                 gameState.players[0]?.wantsRematch &&
@@ -565,16 +601,18 @@
 
                         const roomData = roomDoc.data();
                         
+                        // Double check conditions inside transaction to prevent race conditions
                         if (roomData.status !== 'results' || !roomData.players[0]?.wantsRematch || !roomData.players[1]?.wantsRematch) {
                             return;
                         }
                         
+                        // The winner of the previous round (or the RPS winner if it was a tie) goes first
                         const nextTurn = roomData.roundWinner !== null && roomData.roundWinner !== -1 ? roomData.roundWinner : roomData.rpsWinner;
 
                         transaction.update(roomRef, {
                             status: 'betting',
                             turn: nextTurn,
-                            rpsWinner: nextTurn,
+                            rpsWinner: nextTurn, // Keep the original RPS winner for ties
                             diceResult: null,
                             roundWinner: null,
                             diceFaces: null,
@@ -607,6 +645,8 @@
                  if (i === me?.bet) classes += 'selected-by-me ';
                  else if (i === opponentBet) classes += 'selected-by-opponent ';
                  else classes += 'bg-white border-gray-300 ';
+                 
+                 // Enable button if it's my turn, I haven't bet yet, and the opponent hasn't picked this number
                  if (myTurn && !me?.bet && i !== opponentBet) {
                      classes += 'hover:bg-blue-200 cursor-pointer';
                      circle.disabled = false;
@@ -614,6 +654,7 @@
                      classes += 'opacity-70 cursor-not-allowed';
                      circle.disabled = true;
                  }
+                 // Highlight the correct answer after the round ends
                  if (gameState.status === 'results' && i === gameState.diceResult) classes += ' correct-guess border-green-400';
                  circle.className = classes;
                  if(!circle.disabled) circle.onclick = () => placeBet(i);
@@ -646,6 +687,7 @@
         });
 
         (async () => {
+            // Disable button while connecting
             enterLobbyBtn.disabled = true;
             enterLobbyBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
             enterLobbyBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
@@ -654,6 +696,7 @@
             onAuthStateChanged(auth, user => {
                 if (user) {
                     userId = user.uid;
+                    // Enable button once authenticated
                     enterLobbyBtn.disabled = false;
                     enterLobbyBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
                     enterLobbyBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
@@ -666,11 +709,27 @@
             });
             
             try {
-                 if(auth.currentUser) return;
-                 await signInAnonymously(auth);
+                // The recommended sign-in pattern for the environment.
+                // Prioritize the custom token provided by the platform.
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    // Fallback to anonymous sign-in if no custom token is available.
+                    await signInAnonymously(auth);
+                }
             } catch (error) {
-                 console.error("Lỗi đăng nhập ẩn danh:", error);
-                 showNotification("Lỗi xác thực người dùng.");
+                console.error("Lỗi đăng nhập ban đầu:", error);
+                showNotification("Lỗi xác thực. Thử đăng nhập ẩn danh.");
+                // If the custom token fails for any reason (e.g., invalid claims),
+                // attempt to sign in anonymously as a final fallback to allow the app to run.
+                try {
+                    if (!auth.currentUser) {
+                       await signInAnonymously(auth);
+                    }
+                } catch (anonError) {
+                    console.error("Lỗi đăng nhập ẩn danh sau khi thất bại:", anonError);
+                    showNotification("Không thể xác thực người dùng.");
+                }
             }
 
             showView(nameView);
