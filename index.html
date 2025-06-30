@@ -157,6 +157,7 @@ let gameUnsubscribe = null;
 let userId;
 let joinTimeout = null;
 let diceAnimationIds = {};
+let isRollingFlag = false; // Flag to prevent multiple roll calls
 
 // Firestore collection path
 const roomsCollectionPath = `/artifacts/${appId}/public/data/dice-game-rooms`;
@@ -523,13 +524,18 @@ function renderBettingBoard() {
 
 // --- Rolling & Results Stage ---
 function handleRollingUI() {
+    if (isRollingFlag) return; // Prevent re-triggering
+    isRollingFlag = true;
+
     gameStatus.textContent = 'Tất cả đã cược! Chuẩn bị xem kết quả!';
     diceRollView.classList.remove('hidden');
     document.getElementById('rolling-text').textContent = "Đang tung xúc xắc...";
     stopAllDiceAnimations();
     createDice3D('dice1-3d', 1, true);
     createDice3D('dice2-3d', 1, true);
-    if (myPlayerIndex === 0) setTimeout(rollDice, 2500);
+    if (myPlayerIndex === 0) {
+        setTimeout(rollDice, 2500);
+    }
 }
 
 async function rollDice() {
@@ -539,6 +545,13 @@ async function rollDice() {
         await runTransaction(db, async (transaction) => {
             const roomDoc = await transaction.get(roomRef);
             if (!roomDoc.exists()) return;
+            
+            // CRITICAL CHECK: Prevent race conditions. Only roll if the status is 'rolling'.
+            if (roomDoc.data().status !== 'rolling') {
+                console.warn("RollDice aborted: game status is not 'rolling'.");
+                return;
+            }
+
             const players = JSON.parse(JSON.stringify(roomDoc.data().players || [null, null]));
             const die1 = Math.floor(Math.random() * 6) + 1;
             const die2 = Math.floor(Math.random() * 6) + 1;
@@ -558,6 +571,7 @@ async function rollDice() {
 }
 
 function handleResultUI(me) {
+    isRollingFlag = false; // Reset the flag for the next round
     gameStatus.textContent = 'Vòng chơi kết thúc!';
     resultView.classList.remove('hidden');
     bettingView.classList.remove('hidden'); 
@@ -595,25 +609,32 @@ async function checkAndResetForRematch() {
             const roomDoc = await transaction.get(roomRef);
             if (!roomDoc.exists()) return;
             
-            // Get the entire current game state
-            const newGameState = roomDoc.data();
-
-            // Reset player-specific data for the new round
-            const players = JSON.parse(JSON.stringify(newGameState.players || [null, null]));
-            if(players[0]) { players[0].bet = null; players[0].wantsRematch = false; players[0].rpsChoice = null; }
-            if(players[1]) { players[1].bet = null; players[1].wantsRematch = false; players[1].rpsChoice = null; }
-            newGameState.players = players;
-
-            // Set the state for the next round
-            newGameState.status = 'betting';
-            newGameState.turn = (newGameState.roundWinner !== null && newGameState.roundWinner !== -1) ? newGameState.roundWinner : newGameState.rpsWinner;
+            const currentData = roomDoc.data();
             
-            // Explicitly delete properties from the previous round to ensure a clean state
-            delete newGameState.diceResult;
-            delete newGameState.diceFaces;
-            delete newGameState.roundWinner;
+            // Create a clean state for the new round, preserving only what's needed
+            const newGameState = {
+                id: currentData.id,
+                playerCount: currentData.playerCount,
+                players: JSON.parse(JSON.stringify(currentData.players)), // Keep scores
+                status: 'betting',
+                turn: (currentData.roundWinner !== null && currentData.roundWinner !== -1) ? currentData.roundWinner : currentData.rpsWinner,
+                rpsWinner: currentData.rpsWinner // Persist the original RPS winner
+            };
+
+            // Reset player-specific data for the new round, but keep the score
+            if(newGameState.players[0]) { 
+                newGameState.players[0].bet = null; 
+                newGameState.players[0].wantsRematch = false; 
+                newGameState.players[0].rpsChoice = null; 
+            }
+            if(newGameState.players[1]) { 
+                newGameState.players[1].bet = null; 
+                newGameState.players[1].wantsRematch = false; 
+                newGameState.players[1].rpsChoice = null; 
+            }
             
-            // Overwrite the entire document with the clean state for the new round
+            // Overwrite the entire document with the clean state. This removes old fields
+            // like diceResult, diceFaces, and roundWinner implicitly.
             transaction.set(roomRef, newGameState);
         });
     }
@@ -660,4 +681,3 @@ enterLobbyBtn.addEventListener('click', () => {
 })();
 </script>
 </body>
-</html>
