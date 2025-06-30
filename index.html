@@ -6,8 +6,6 @@
     <title>Trò Chơi Cược Xúc Xắc 3D (Online với Phòng)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-    <!-- Three.js for 3D Dice -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     
     <script>
         // This configuration will be populated by the environment
@@ -32,7 +30,70 @@
         @keyframes pulse-green { 0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); } 50% { box-shadow: 0 0 0 10px rgba(74, 222, 128, 0); } }
         #notification-toast { transition: opacity 0.3s, top 0.3s; z-index: 9999; }
         .danger { background-color: #ef4444 !important; color: #fff !important; }
-        #dice1-3d canvas, #dice2-3d canvas { display: block; margin: auto; }
+        
+        /* === CSS for 3D Dice (from hieuxucxac.html) === */
+        .dice-view-container {
+            perspective: 1200px;
+        }
+        .dice {
+            position: relative;
+            width: 80px;
+            height: 80px;
+            transform-style: preserve-3d;
+            transition: transform 1.5s cubic-bezier(0.4, 0.0, 0.2, 1);
+        }
+        .dice-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border: 2px solid #4b5563;
+            border-radius: 10px;
+            background-color: #f9fafb;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            box-sizing: border-box;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            place-items: center;
+            padding: 5px;
+        }
+        .dot { 
+            display: block; 
+            width: 18px; 
+            height: 18px; 
+            border-radius: 50%; 
+            background-color: #1f2937; 
+        }
+        .face-1 .dot:nth-child(1) { grid-column: 2; grid-row: 2; }
+        .face-2 .dot:nth-child(1) { grid-column: 1; grid-row: 1; }
+        .face-2 .dot:nth-child(2) { grid-column: 3; grid-row: 3; }
+        .face-3 .dot:nth-child(1) { grid-column: 1; grid-row: 1; }
+        .face-3 .dot:nth-child(2) { grid-column: 2; grid-row: 2; }
+        .face-3 .dot:nth-child(3) { grid-column: 3; grid-row: 3; }
+        .face-4 .dot:nth-child(1) { grid-column: 1; grid-row: 1; }
+        .face-4 .dot:nth-child(2) { grid-column: 3; grid-row: 1; }
+        .face-4 .dot:nth-child(3) { grid-column: 1; grid-row: 3; }
+        .face-4 .dot:nth-child(4) { grid-column: 3; grid-row: 3; }
+        .face-5 .dot:nth-child(1) { grid-column: 1; grid-row: 1; }
+        .face-5 .dot:nth-child(2) { grid-column: 3; grid-row: 1; }
+        .face-5 .dot:nth-child(3) { grid-column: 2; grid-row: 2; }
+        .face-5 .dot:nth-child(4) { grid-column: 1; grid-row: 3; }
+        .face-5 .dot:nth-child(5) { grid-column: 3; grid-row: 3; }
+        .face-6 .dot:nth-child(1) { grid-column: 1; grid-row: 1; }
+        .face-6 .dot:nth-child(2) { grid-column: 3; grid-row: 1; }
+        .face-6 .dot:nth-child(3) { grid-column: 1; grid-row: 2; }
+        .face-6 .dot:nth-child(4) { grid-column: 3; grid-row: 2; }
+        .face-6 .dot:nth-child(5) { grid-column: 1; grid-row: 3; }
+        .face-6 .dot:nth-child(6) { grid-column: 3; grid-row: 3; }
+
+        /* Initial positions of each face to form a cube */
+        .face-1 { transform: rotateY(0deg) translateZ(40px); }
+        .face-6 { transform: rotateY(180deg) translateZ(40px); }
+        .face-2 { transform: rotateX(90deg) translateZ(40px); }
+        .face-5 { transform: rotateX(-90deg) translateZ(40px); }
+        .face-3 { transform: rotateY(90deg) translateZ(40px); }
+        .face-4 { transform: rotateY(-90deg) translateZ(40px); }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800 flex items-center justify-center min-h-screen p-4">
@@ -94,9 +155,13 @@
                 <!-- 3D Dice Roll View -->
                 <div id="dice-roll-view" class="hidden flex flex-col items-center justify-center min-h-[200px]">
                     <p class="text-2xl font-bold mb-4" id="rolling-text"></p>
-                    <div class="flex gap-6 justify-center w-full">
-                        <div id="dice1-3d" style="width: 120px; height: 120px;"></div>
-                        <div id="dice2-3d" style="width: 120px; height: 120px;"></div>
+                    <div class="flex justify-center items-center gap-12 min-h-[140px]">
+                        <div class="dice-view-container">
+                            <div id="dice1" class="dice"></div>
+                        </div>
+                        <div class="dice-view-container">
+                            <div id="dice2" class="dice"></div>
+                        </div>
                     </div>
                 </div>
                 <!-- Result View -->
@@ -145,18 +210,17 @@ const playAgainBtn = document.getElementById('play-again-btn');
 const rpsChoices = document.getElementById('rps-choices');
 const rpsResultText = document.getElementById('rps-result-text');
 const continueBtn = document.getElementById('continue-btn');
-const notificationToast = document.getElementById('notification-toast');
+const dice1El = document.getElementById('dice1');
+const dice2El = document.getElementById('dice2');
 
 // Global state variables
 let localPlayerName = '';
 let currentRoomId = null;
 let myPlayerIndex = null;
-let gameState = {};
 let lobbyUnsubscribe = null;
 let gameUnsubscribe = null;
 let userId;
 let joinTimeout = null;
-let diceAnimationIds = {};
 let isRollingFlag = false; 
 
 // Firestore collection path
@@ -164,6 +228,7 @@ const roomsCollectionPath = `/artifacts/${appId}/public/data/dice-game-rooms`;
 
 // --- UTILITY FUNCTIONS ---
 function showNotification(message, danger = false) {
+    const notificationToast = document.getElementById('notification-toast');
     notificationToast.textContent = message;
     notificationToast.classList.remove('opacity-0');
     if (danger) notificationToast.classList.add('danger');
@@ -176,97 +241,36 @@ function showView(view) {
     view.classList.remove('hidden');
 }
 
-// ===== 3D DICE LOGIC =====
-function createDiceTexture(n) {
-    const canvas = document.createElement('canvas');
-    canvas.width = 128; canvas.height = 128;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = 'white';
-    ctx.fillRect(0, 0, 128, 128);
-    ctx.strokeStyle = '#333';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(2, 2, 124, 124);
-    ctx.fillStyle = 'black';
-    const dot = (x, y) => { ctx.beginPath(); ctx.arc(x, y, 12, 0, 2 * Math.PI); ctx.fill(); };
-    const positions = { center: [64, 64], topLeft: [32, 32], topRight: [96, 32], bottomLeft: [32, 96], bottomRight: [96, 96], middleLeft: [32, 64], middleRight: [96, 64] };
-    const patterns = { 1: ['center'], 2: ['topLeft', 'bottomRight'], 3: ['topLeft', 'center', 'bottomRight'], 4: ['topLeft', 'topRight', 'bottomLeft', 'bottomRight'], 5: ['topLeft', 'topRight', 'center', 'bottomLeft', 'bottomRight'], 6: ['topLeft', 'topRight', 'middleLeft', 'middleRight', 'bottomLeft', 'bottomRight'] };
-    (patterns[n] || []).forEach(posKey => { const [x, y] = positions[posKey]; dot(x, y); });
-    return new THREE.CanvasTexture(canvas);
+// --- 3D DICE LOGIC (CSS Based) ---
+const diceRotations = {
+    1: 'rotateX(0deg) rotateY(0deg)',
+    2: 'rotateX(-90deg) rotateY(0deg)',
+    3: 'rotateX(0deg) rotateY(-90deg)',
+    4: 'rotateX(0deg) rotateY(90deg)',
+    5: 'rotateX(90deg) rotateY(0deg)',
+    6: 'rotateX(0deg) rotateY(180deg)',
+};
+
+function getDiceHTML() {
+    let facesHTML = '';
+    for (let i = 1; i <= 6; i++) {
+        facesHTML += `<div class="dice-face face-${i}">${'<span class="dot"></span>'.repeat(i)}</div>`;
+    }
+    return facesHTML;
 }
 
-function createDice3D(containerId, value, animate = false) {
-    if (diceAnimationIds[containerId]) cancelAnimationFrame(diceAnimationIds[containerId]);
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    container.innerHTML = '';
-    const width = container.clientWidth, height = container.clientHeight;
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
-    camera.position.z = 150;
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-    renderer.setSize(width, height);
-    container.appendChild(renderer.domElement);
-    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(50, 100, 150);
-    scene.add(directionalLight);
-    const diceGroup = new THREE.Group();
-    scene.add(diceGroup);
-
-    const diceMaterials = [
-        new THREE.MeshStandardMaterial({ map: createDiceTexture(3) }), // +X (right)
-        new THREE.MeshStandardMaterial({ map: createDiceTexture(4) }), // -X (left)
-        new THREE.MeshStandardMaterial({ map: createDiceTexture(2) }), // +Y (top)
-        new THREE.MeshStandardMaterial({ map: createDiceTexture(5) }), // -Y (bottom)
-        new THREE.MeshStandardMaterial({ map: createDiceTexture(1) }), // +Z (front/camera)
-        new THREE.MeshStandardMaterial({ map: createDiceTexture(6) })  // -Z (back)
-    ];
-
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(70, 70, 70), diceMaterials);
-    diceGroup.add(mesh);
-
-    function setFinalRotation(group, value) {
-        const faceRotation = {
-            1: { x: 0, y: 0, z: 0 },
-            2: { x: -Math.PI / 2, y: 0, z: 0 },
-            3: { x: 0, y: Math.PI / 2, z: 0 },
-            4: { x: 0, y: -Math.PI / 2, z: 0 },
-            5: { x: Math.PI / 2, y: 0, z: 0 },
-            6: { x: Math.PI, y: 0, z: 0 }
-        };
-        const r = faceRotation[value] || faceRotation[1];
-        group.rotation.set(r.x, r.y, r.z);
-    }
-
-    function loop() {
-        if (animate) {
-            diceGroup.rotation.x += 0.15 + Math.random() * 0.1;
-            diceGroup.rotation.y += 0.16 + Math.random() * 0.1;
-        }
-        renderer.render(scene, camera);
-        diceAnimationIds[containerId] = requestAnimationFrame(loop);
-    }
-    if (animate) {
-        loop();
-    } else {
-        setFinalRotation(diceGroup, value);
-        renderer.render(scene, camera);
-    }
-}
-
-function stopAllDiceAnimations() {
-    Object.keys(diceAnimationIds).forEach(id => {
-        if (diceAnimationIds[id]) {
-            cancelAnimationFrame(diceAnimationIds[id]);
-            diceAnimationIds[id] = null;
-        }
-    });
+function setupDice() {
+    dice1El.innerHTML = getDiceHTML();
+    dice2El.innerHTML = getDiceHTML();
+    dice1El.style.transition = 'transform 0s';
+    dice2El.style.transition = 'transform 0s';
+    dice1El.style.transform = `translateZ(-40px) ${diceRotations[1]}`;
+    dice2El.style.transform = `translateZ(-40px) ${diceRotations[1]}`;
 }
 
 
 // --- NAVIGATION & ROOM MANAGEMENT ---
 async function goToLobby() {
-    stopAllDiceAnimations();
     if (joinTimeout) clearTimeout(joinTimeout);
     if (gameUnsubscribe) gameUnsubscribe();
     gameUnsubscribe = null; currentRoomId = null; myPlayerIndex = null;
@@ -277,7 +281,6 @@ async function goToLobby() {
 }
 
 async function leaveRoom() {
-    stopAllDiceAnimations();
     if (!currentRoomId || !userId) return goToLobby();
     const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
     try {
@@ -379,46 +382,46 @@ function listenToGame(roomId) {
     gameUnsubscribe = onSnapshot(roomRef, (docSnap) => {
         if (!docSnap.exists()) { showNotification("Chủ phòng đã rời đi. Quay về sảnh chờ."); goToLobby(); return; }
         
-        gameState = JSON.parse(JSON.stringify(docSnap.data()));
+        const newGameState = JSON.parse(JSON.stringify(docSnap.data()));
 
         if (myPlayerIndex === null || myPlayerIndex === -1) {
-            myPlayerIndex = (gameState.players || []).findIndex(p => p && p.id === userId);
+            myPlayerIndex = (newGameState.players || []).findIndex(p => p && p.id === userId);
         }
-        updateGameUI();
+        updateGameUI(newGameState);
     });
 }
 
-function updateGameUI() {
-    if (!gameState || !gameState.players) { gameStatus.textContent = 'Đang tải dữ liệu phòng...'; return; }
+function updateGameUI(currentGameState) {
+    if (!currentGameState || !currentGameState.players) { gameStatus.textContent = 'Đang tải dữ liệu phòng...'; return; }
     if (myPlayerIndex === -1 || myPlayerIndex === null) { gameStatus.textContent = 'Đang đồng bộ...'; return; }
     if (joinTimeout) clearTimeout(joinTimeout);
-    const me = gameState.players[myPlayerIndex];
-    const opponent = gameState.players[1 - myPlayerIndex];
+    const me = currentGameState.players[myPlayerIndex];
+    const opponent = currentGameState.players[1 - myPlayerIndex];
     gameRoomId.textContent = currentRoomId;
     const renderPlayerBox = (el, player, isMe) => {
         if (!player) { el.innerHTML = `<h3 class="font-bold text-lg">Đang chờ...</h3>`; return; }
         const rpsMap = { r: '✊', p: '✋', s: '✂️' };
         let rpsDisplay = '';
-        if (player.rpsChoice && gameState.status === 'rps') {
-            rpsDisplay = (gameState.players[0]?.rpsChoice && gameState.players[1]?.rpsChoice)
+        if (player.rpsChoice && currentGameState.status === 'rps') {
+            rpsDisplay = (currentGameState.players[0]?.rpsChoice && currentGameState.players[1]?.rpsChoice)
                 ? `<p class="mt-1">Ra: <span class="text-2xl">${rpsMap[player.rpsChoice]}</span></p>`
                 : `<p class="mt-1">Ra: <span class="text-xl font-bold text-gray-500">Đã chọn</span></p>`;
         }
         const displayName = player.name ? (isMe ? `${player.name} (Bạn)` : player.name) : (isMe ? "Bạn" : "Đối thủ");
         el.innerHTML = `<h3 class="text-lg font-bold">${displayName}</h3><p class="text-2xl font-black text-indigo-600">${player.score || 0} Điểm</p>${player.bet ? `<p class="mt-1">Đã cược: <span class="font-bold text-xl">${player.bet}</span></p>` : ''}${rpsDisplay}`;
     };
-    renderPlayerBox(player1Info, gameState.players[0], myPlayerIndex === 0);
-    renderPlayerBox(player2Info, gameState.players[1], myPlayerIndex === 1);
+    renderPlayerBox(player1Info, currentGameState.players[0], myPlayerIndex === 0);
+    renderPlayerBox(player2Info, currentGameState.players[1], myPlayerIndex === 1);
     [rpsView, bettingView, diceRollView, resultView].forEach(v => v.classList.add('hidden'));
-    switch(gameState.status) {
+    switch(currentGameState.status) {
         case 'waiting': gameStatus.textContent = 'Đang chờ người chơi thứ hai...'; break;
-        case 'rps': handleRPSUI(me, opponent); break;
-        case 'betting': handleBettingUI(me, opponent); break;
+        case 'rps': handleRPSUI(me, opponent, currentGameState); break;
+        case 'betting': handleBettingUI(me, opponent, currentGameState); break;
         case 'rolling': handleRollingUI(); break;
-        case 'results': handleResultUI(me); break;
+        case 'results': handleResultUI(me, currentGameState); break;
     }
-    if (gameState.status === 'results' && me?.wantsRematch && opponent?.wantsRematch) {
-        checkAndResetForRematch();
+    if (currentGameState.status === 'results' && me?.wantsRematch && opponent?.wantsRematch) {
+        checkAndResetForRematch(currentGameState);
     }
 }
 
@@ -439,7 +442,7 @@ async function updatePlayerState(key, value) {
 }
 
 // --- RPS Stage ---
-function handleRPSUI(me, opponent) {
+function handleRPSUI(me, opponent, currentGameState) {
     rpsView.classList.remove('hidden');
     rpsResultText.textContent = '';
     continueBtn.classList.add('hidden');
@@ -447,13 +450,13 @@ function handleRPSUI(me, opponent) {
     const rpsMap = { r: 'Búa ✊', p: 'Bao ✋', s: 'Kéo ✂️' };
     if (me?.rpsChoice && opponent?.rpsChoice) {
         rpsChoices.classList.add('hidden');
-        const winnerId = determineRPSWinner();
+        const winnerId = determineRPSWinner(currentGameState);
         if (winnerId === -1) {
             rpsResultText.innerHTML = `Hòa! Cả hai cùng ra ${rpsMap[me.rpsChoice]}. Chơi lại!`;
             if (myPlayerIndex === 0) continueBtn.classList.remove('hidden'); else gameStatus.textContent = 'Hòa! Đang chờ chủ phòng chơi lại...';
         } else {
-            const winnerName = gameState.players[winnerId]?.name || `Người chơi ${winnerId + 1}`;
-            rpsResultText.innerHTML = `${gameState.players[0]?.name} ra ${rpsMap[gameState.players[0].rpsChoice]}, ${gameState.players[1]?.name} ra ${rpsMap[gameState.players[1].rpsChoice]}. <br> <span class="text-green-600">${winnerName} thắng và đi trước!</span>`;
+            const winnerName = currentGameState.players[winnerId]?.name || `Người chơi ${winnerId + 1}`;
+            rpsResultText.innerHTML = `${currentGameState.players[0]?.name} ra ${rpsMap[currentGameState.players[0].rpsChoice]}, ${currentGameState.players[1]?.name} ra ${rpsMap[currentGameState.players[1].rpsChoice]}. <br> <span class="text-green-600">${winnerName} thắng và đi trước!</span>`;
             if (myPlayerIndex === winnerId) continueBtn.classList.remove('hidden'); else gameStatus.textContent = `Đang chờ ${winnerName} tiếp tục...`;
         }
     } else if (me?.rpsChoice) {
@@ -467,14 +470,15 @@ function handleRPSUI(me, opponent) {
 rpsChoices.addEventListener('click', (e) => { const choice = e.target.closest('.rps-choice')?.dataset.choice; if (choice) updatePlayerState('rpsChoice', choice); });
 
 continueBtn.addEventListener('click', async () => {
-    const winner = determineRPSWinner();
     const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
     await runTransaction(db, async (transaction) => {
+        const roomDoc = await transaction.get(roomRef);
+        if (!roomDoc.exists()) return;
+        const currentData = roomDoc.data();
+        const winner = determineRPSWinner(currentData);
         if (winner === -1) {
             if (myPlayerIndex === 0) {
-                const roomDoc = await transaction.get(roomRef);
-                if (!roomDoc.exists()) return;
-                let players = [...(roomDoc.data().players || [null, null])];
+                let players = [...(currentData.players || [null, null])];
                 if(players[0]) players[0].rpsChoice = null;
                 if(players[1]) players[1].rpsChoice = null;
                 transaction.set(roomRef, { players }, { merge: true });
@@ -487,8 +491,8 @@ continueBtn.addEventListener('click', async () => {
     });
 });
 
-function determineRPSWinner() {
-    const p1c = gameState.players[0]?.rpsChoice, p2c = gameState.players[1]?.rpsChoice;
+function determineRPSWinner(currentGameState) {
+    const p1c = currentGameState.players[0]?.rpsChoice, p2c = currentGameState.players[1]?.rpsChoice;
     if (!p1c || !p2c) return null;
     if (p1c === p2c) return -1;
     if ((p1c === 'r' && p2c === 's') || (p1c === 's' && p2c === 'p') || (p1c === 'p' && p2c === 'r')) return 0;
@@ -510,18 +514,18 @@ async function placeBet(number) {
     });
 }
 
-function handleBettingUI(me, opponent) {
+function handleBettingUI(me, opponent, currentGameState) {
     bettingView.classList.remove('hidden');
-    renderBettingBoard();
-    gameStatus.textContent = (gameState.turn === myPlayerIndex) ? 'Đến lượt bạn! Hãy chọn một số để cược.' : `Đang chờ ${opponent?.name || 'đối thủ'} đặt cược...`;
+    renderBettingBoard(currentGameState);
+    gameStatus.textContent = (currentGameState.turn === myPlayerIndex) ? 'Đến lượt bạn! Hãy chọn một số để cược.' : `Đang chờ ${opponent?.name || 'đối thủ'} đặt cược...`;
 }
 
-function renderBettingBoard() {
+function renderBettingBoard(currentGameState) {
     const board = document.getElementById('betting-board');
     board.innerHTML = '';
-    const me = gameState.players?.[myPlayerIndex];
-    const opponent = gameState.players?.[1 - myPlayerIndex];
-    const myTurn = gameState.status === 'betting' && gameState.turn === myPlayerIndex;
+    const me = currentGameState.players?.[myPlayerIndex];
+    const opponent = currentGameState.players?.[1 - myPlayerIndex];
+    const myTurn = currentGameState.status === 'betting' && currentGameState.turn === myPlayerIndex;
     for (let i = 2; i <= 12; i++) {
         const circle = document.createElement('button');
         circle.textContent = i;
@@ -533,7 +537,7 @@ function renderBettingBoard() {
         const canBet = myTurn && !me?.bet && i !== opponentBet;
         classes += canBet ? 'hover:bg-blue-200 cursor-pointer' : 'opacity-70 cursor-not-allowed';
         circle.disabled = !canBet;
-        if (gameState.status === 'results' && i === gameState.diceResult) classes += ' correct-guess border-green-400';
+        if (currentGameState.status === 'results' && i === currentGameState.diceResult) classes += ' correct-guess border-green-400';
         circle.className = classes;
         if (!circle.disabled) circle.onclick = () => placeBet(i);
         board.appendChild(circle);
@@ -548,11 +552,20 @@ function handleRollingUI() {
     gameStatus.textContent = 'Tất cả đã cược! Chuẩn bị xem kết quả!';
     diceRollView.classList.remove('hidden');
     document.getElementById('rolling-text').textContent = "Đang tung xúc xắc...";
-    stopAllDiceAnimations();
-    createDice3D('dice1-3d', 1, true);
-    createDice3D('dice2-3d', 1, true);
+    
+    dice1El.style.transition = 'transform 1.5s cubic-bezier(0.4, 0.0, 0.2, 1)';
+    dice2El.style.transition = 'transform 1.5s cubic-bezier(0.4, 0.0, 0.2, 1)';
+
+    const randomX1 = 360 * (Math.floor(Math.random() * 4) + 2);
+    const randomY1 = 360 * (Math.floor(Math.random() * 4) + 2);
+    const randomX2 = 360 * (Math.floor(Math.random() * 4) + 2);
+    const randomY2 = 360 * (Math.floor(Math.random() * 4) + 2);
+
+    dice1El.style.transform = `translateZ(-40px) rotateX(${randomX1}deg) rotateY(${randomY1}deg)`;
+    dice2El.style.transform = `translateZ(-40px) rotateX(${randomX2}deg) rotateY(${randomY2}deg)`;
+
     if (myPlayerIndex === 0) {
-        setTimeout(rollDice, 2500);
+        setTimeout(rollDice, 1600);
     }
 }
 
@@ -587,26 +600,30 @@ async function rollDice() {
     } catch (error) { console.error("Error in rollDice transaction:", error); showNotification("Đã có lỗi xảy ra khi tung xúc xắc!", true); }
 }
 
-function handleResultUI(me) {
-    stopAllDiceAnimations();
+function handleResultUI(me, currentGameState) {
     isRollingFlag = false; 
 
     gameStatus.textContent = 'Vòng chơi kết thúc!';
     resultView.classList.remove('hidden');
     bettingView.classList.remove('hidden'); 
-    renderBettingBoard();
-    document.getElementById('dice-result-value').textContent = gameState.diceResult;
-    if (gameState.diceFaces) {
+    renderBettingBoard(currentGameState);
+    document.getElementById('dice-result-value').textContent = currentGameState.diceResult;
+    
+    if (currentGameState.diceFaces) {
         diceRollView.classList.remove('hidden');
         document.getElementById('rolling-text').textContent = "Kết quả xúc xắc:";
-        createDice3D('dice1-3d', gameState.diceFaces[0], false);
-        createDice3D('dice2-3d', gameState.diceFaces[1], false);
+        
+        dice1El.style.transition = 'transform 0.5s cubic-bezier(0.4, 0.0, 0.2, 1)';
+        dice2El.style.transition = 'transform 0.5s cubic-bezier(0.4, 0.0, 0.2, 1)';
+        dice1El.style.transform = `translateZ(-40px) ${diceRotations[currentGameState.diceFaces[0]]}`;
+        dice2El.style.transform = `translateZ(-40px) ${diceRotations[currentGameState.diceFaces[1]]}`;
     }
+
     const winnerText = document.getElementById('winner-text');
-    const winnerId = gameState.roundWinner;
+    const winnerId = currentGameState.roundWinner;
     if (winnerId === null) winnerText.textContent = 'Không ai đoán trúng!';
     else if (winnerId === -1) winnerText.textContent = 'Cả hai người chơi đều đoán trúng! Mỗi người 1 điểm.';
-    else winnerText.textContent = `${gameState.players[winnerId]?.name || 'Người chơi'} đã thắng vòng này và được 1 điểm!`;
+    else winnerText.textContent = `${currentGameState.players[winnerId]?.name || 'Người chơi'} đã thắng vòng này và được 1 điểm!`;
     playAgainBtn.textContent = me?.wantsRematch ? 'Đang chờ đối thủ...' : 'Chơi Lại';
     playAgainBtn.disabled = me?.wantsRematch;
 }
@@ -614,27 +631,22 @@ function handleResultUI(me) {
 // --- Rematch Logic ---
 playAgainBtn.addEventListener('click', () => updatePlayerState('wantsRematch', true));
 
-async function checkAndResetForRematch() {
+async function checkAndResetForRematch(currentGameState) {
     if (
-        gameState.status === 'results' &&
-        gameState.players[0]?.wantsRematch &&
-        gameState.players[1]?.wantsRematch &&
+        currentGameState.status === 'results' &&
+        currentGameState.players[0]?.wantsRematch &&
+        currentGameState.players[1]?.wantsRematch &&
         myPlayerIndex === 0
     ) {
         const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
         await runTransaction(db, async (transaction) => {
-            const roomDoc = await transaction.get(roomRef);
-            if (!roomDoc.exists()) return;
-            
-            const currentData = roomDoc.data();
-            
             const newGameState = {
-                id: currentData.id,
-                playerCount: currentData.playerCount,
-                players: JSON.parse(JSON.stringify(currentData.players)),
+                id: currentGameState.id,
+                playerCount: currentGameState.playerCount,
+                players: JSON.parse(JSON.stringify(currentGameState.players)),
                 status: 'betting',
-                turn: (currentData.roundWinner !== null && currentData.roundWinner !== -1) ? currentData.roundWinner : currentData.rpsWinner,
-                rpsWinner: currentData.rpsWinner
+                turn: (currentGameState.roundWinner !== null && currentGameState.roundWinner !== -1) ? currentGameState.roundWinner : currentGameState.rpsWinner,
+                rpsWinner: currentGameState.rpsWinner
             };
 
             if(newGameState.players[0]) { 
@@ -663,6 +675,7 @@ enterLobbyBtn.addEventListener('click', () => {
 });
 
 (async () => {
+    setupDice(); // Initialize dice structure on load
     const savedName = localStorage.getItem('dice_player_name');
     if (savedName) playerNameInput.value = savedName;
     enterLobbyBtn.disabled = true;
