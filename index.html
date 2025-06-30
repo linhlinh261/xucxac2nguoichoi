@@ -1,35 +1,34 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trò Chơi Cược Xúc Xắc (Online với Phòng)</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-    <script>
-        if (typeof __firebase_config === 'undefined') {
-            window.__firebase_config = JSON.stringify({
-                apiKey: "AIzaSyCUrFw_GAv5bIGfwFfuiwCuBcjaNqFohVs",
-                authDomain: "tonghaixucxac.firebaseapp.com",
-                projectId: "tonghaixucxac",
-                storageBucket: "tonghaixucxac.firebasestorage.app",
-                messagingSenderId: "282682257745",
-                appId: "1:282682257745:web:b1d53ac3f903d95be8a370",
-            });
-        }
-    </script>
-    <style>
-        body { font-family: 'Roboto', sans-serif; }
-        .room-btn { transition: all 0.2s ease-in-out; }
-        .room-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        .dice { width: 80px; height: 80px; padding: 10px; border-radius: 12px; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 5px; }
-        .dot { width: 14px; height: 14px; background-color: black; border-radius: 50%; }
-        .dot-container { display: flex; justify-content: center; align-items: center; }
-        .bet-circle.selected-by-me { background-color: #3b82f6; color: white; border-color: #1d4ed8; }
-        .bet-circle.selected-by-opponent { background-color: #ef4444; color: white; border-color: #b91c1c; }
-        .bet-circle.correct-guess { animation: pulse-green 2s infinite; }
-        @keyframes pulse-green { 0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); } 50% { box-shadow: 0 0 0 10px rgba(74, 222, 128, 0); } }
-    </style>
+<meta charset="UTF-8">
+<title>Trò Chơi Cược Xúc Xắc (Debug Validate)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+<script>
+if (typeof __firebase_config === 'undefined') {
+    window.__firebase_config = JSON.stringify({
+        apiKey: "AIzaSyCUrFw_GAv5bIGfwFfuiwCuBcjaNqFohVs",
+        authDomain: "tonghaixucxac.firebaseapp.com",
+        projectId: "tonghaixucxac",
+        storageBucket: "tonghaixucxac.firebasestorage.app",
+        messagingSenderId: "282682257745",
+        appId: "1:282682257745:web:b1d53ac3f903d95be8a370",
+    });
+}
+</script>
+<style>
+body { font-family: 'Roboto', sans-serif; }
+.room-btn { transition: all 0.2s ease-in-out; }
+.room-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.dice { width: 80px; height: 80px; padding: 10px; border-radius: 12px; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 5px; }
+.dot { width: 14px; height: 14px; background-color: black; border-radius: 50%; }
+.dot-container { display: flex; justify-content: center; align-items: center; }
+.bet-circle.selected-by-me { background-color: #3b82f6; color: white; border-color: #1d4ed8; }
+.bet-circle.selected-by-opponent { background-color: #ef4444; color: white; border-color: #b91c1c; }
+.bet-circle.correct-guess { animation: pulse-green 2s infinite; }
+@keyframes pulse-green { 0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); } 50% { box-shadow: 0 0 0 10px rgba(74, 222, 128, 0); } }
+</style>
 </head>
 <body class="bg-gray-100 text-gray-800 flex items-center justify-center min-h-screen p-4">
 
@@ -45,7 +44,6 @@
             <button id="enter-lobby-btn" class="bg-blue-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-700 transition-all duration-300 shadow-md">Vào Sảnh Chờ</button>
         </div>
     </div>
-
     <div id="lobby-view" class="hidden">
         <div class="bg-white p-8 rounded-xl shadow-lg">
             <div class="flex justify-between items-center mb-6">
@@ -55,7 +53,6 @@
             <div id="room-list" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4"></div>
         </div>
     </div>
-    
     <div id="game-view" class="hidden">
         <div class="bg-white p-6 rounded-xl shadow-lg w-full">
             <div class="flex justify-between items-center border-b pb-4 mb-4">
@@ -99,25 +96,18 @@
 </div>
 
 <script type="module">
+// ======= IMPORT FIREBASE SDK =======
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { getFirestore, doc, updateDoc, collection, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// Hàm đảm bảo mảng players luôn đúng cấu trúc
-function validatePlayersArray(players) {
-    let arr = Array.isArray(players) ? players : [players?.['0'] || null, players?.['1'] || null];
-    if (arr.length < 2) arr = [arr[0] || null, arr[1] || null];
-    arr = arr.map(p => (p && p.id && p.name ? p : null));
-    return arr;
-}
-
-// Firebase Init
+// ======= FIREBASE INIT =======
 const firebaseConfig = JSON.parse(window.__firebase_config);
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// UI Elements
+// ======= UI =======
 const nameView = document.getElementById('name-view');
 const lobbyView = document.getElementById('lobby-view');
 const gameView = document.getElementById('game-view');
@@ -151,12 +141,12 @@ let joinTimeout = null;
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'dice-game-2024';
 const roomsCollectionPath = `/artifacts/${appId}/public/data/dice-game-rooms-v3`;
 
-// Utility
-function showNotification(message) {
+// ======= UTIL =======
+function showNotification(message, color = 'bg-blue-600') {
     const toast = document.getElementById('notification-toast');
     toast.textContent = message;
-    toast.classList.remove('opacity-0');
-    setTimeout(() => toast.classList.add('opacity-0'), 4000);
+    toast.className = `fixed top-5 right-5 text-white py-2 px-4 rounded-lg shadow-lg transition-opacity duration-300 z-50 opacity-100 pointer-events-auto ${color}`;
+    setTimeout(() => { toast.classList.add('opacity-0'); }, 4000);
 }
 
 function createDiceDots(face) {
@@ -167,6 +157,16 @@ function createDiceDots(face) {
     return `<div class="dice bg-white shadow-md dot-${face}">${dots}</div>`;
 }
 
+function validatePlayers(playersArr) {
+    if (!Array.isArray(playersArr) || playersArr.length !== 2) return false;
+    let ok = true;
+    for (const p of playersArr) {
+        if (p !== null && (!p.id || !p.name)) ok = false;
+    }
+    return ok;
+}
+
+// ======= NAVIGATION =======
 function showView(view) {
     [nameView, lobbyView, gameView].forEach(v => v.classList.add('hidden'));
     view.classList.remove('hidden');
@@ -184,7 +184,7 @@ async function goToLobby() {
     listenToLobby();
 }
 
-// Rời phòng
+// ======= RỜI PHÒNG =======
 async function leaveRoom() {
     if (!currentRoomId || !userId) return goToLobby();
     const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
@@ -192,30 +192,33 @@ async function leaveRoom() {
         await runTransaction(db, async (transaction) => {
             const roomDoc = await transaction.get(roomRef);
             if (!roomDoc.exists()) return;
-            let arr = validatePlayersArray(roomDoc.data().players);
-            const idx = arr.findIndex(p => p && p.id === userId);
-            if (idx !== -1) arr[idx] = null;
-            const stillPlayers = arr.filter(p => p !== null);
+            let playersArray = roomDoc.data().players;
+            if (playersArray && !Array.isArray(playersArray)) {
+                playersArray = [playersArray['0'] || null, playersArray['1'] || null];
+            }
+            const idx = playersArray.findIndex(p => p && p.id === userId);
+            if (idx !== -1) playersArray[idx] = null;
+            const stillPlayers = playersArray.filter(p => p !== null);
             if (stillPlayers.length === 0) {
                 transaction.delete(roomRef);
             } else {
                 transaction.set(roomRef, {
                     ...roomDoc.data(),
-                    players: [arr[0] || null, arr[1] || null],
+                    players: [playersArray[0] || null, playersArray[1] || null],
                     playerCount: stillPlayers.length,
                     status: 'waiting'
-                }, { merge: true });
+                });
             }
         });
     } catch (error) {
-        showNotification("Lỗi khi rời phòng.");
+        showNotification("Lỗi khi rời phòng.", 'bg-red-500');
     } finally {
         goToLobby();
     }
 }
 quitGameBtn.addEventListener('click', leaveRoom);
 
-// Lobby
+// ======= LOBBY =======
 function listenToLobby() {
     if (lobbyUnsubscribe) lobbyUnsubscribe();
     const roomsRef = collection(db, roomsCollectionPath);
@@ -259,10 +262,10 @@ function renderLobby(roomsData) {
     }
 }
 
-// Tham gia phòng
+// ======= THAM GIA PHÒNG =======
 async function joinRoom(roomId) {
     if (!userId) {
-        showNotification("Đang xác thực, vui lòng đợi một lát...");
+        showNotification("Đang xác thực, vui lòng đợi một lát...", 'bg-yellow-600');
         return;
     }
     const roomRef = doc(db, roomsCollectionPath, `room-${roomId}`);
@@ -272,7 +275,7 @@ async function joinRoom(roomId) {
         gameStatus.textContent = 'Đang tham gia phòng...';
         joinTimeout = setTimeout(() => {
             if (myPlayerIndex === null) {
-                showNotification("Không thể vào phòng. Vui lòng thử lại!");
+                showNotification("Không thể vào phòng. Vui lòng thử lại!", 'bg-red-500');
                 goToLobby();
             }
         }, 10000);
@@ -288,37 +291,57 @@ async function joinRoom(roomId) {
                 };
             } else {
                 roomData = roomDoc.data();
-                let arr = validatePlayersArray(roomData.players);
-                const emptySlot = arr.findIndex(p => !p);
-                if (emptySlot === -1) throw new Error("Phòng đầy hoặc dữ liệu lỗi.");
-                arr[emptySlot] = { id: userId, name: localPlayerName, score: 0, rpsChoice: null, bet: null, wantsRematch: false };
-                roomData.players = arr;
-                roomData.playerCount = arr.filter(Boolean).length;
-                if (roomData.playerCount === 2) roomData.status = 'rps';
+                if (roomData.players && !Array.isArray(roomData.players)) {
+                    roomData.players = [roomData.players['0'] || null, roomData.players['1'] || null];
+                }
+                if (roomData.playerCount >= 2) throw new Error("Phòng đã đầy!");
+                const emptySlot = roomData.players.findIndex(p => !p);
+                if (emptySlot === -1) throw new Error("Phòng đầy nhưng playerCount không chính xác.");
+                roomData.players[emptySlot] = { id: userId, name: localPlayerName, score: 0, rpsChoice: null, bet: null, wantsRematch: false };
+                roomData.playerCount = roomData.players.filter(Boolean).length;
+                if(roomData.playerCount === 2) roomData.status = 'rps';
             }
-            transaction.set(roomRef, { ...roomData, players: [roomData.players[0] || null, roomData.players[1] || null] }, { merge: true });
+            transaction.set(roomRef, {
+                ...roomData,
+                players: [roomData.players[0] || null, roomData.players[1] || null],
+            });
         });
         if(lobbyUnsubscribe) lobbyUnsubscribe();
         currentRoomId = roomId;
         listenToGame(roomId);
     } catch (e) {
         console.error("Join room failed: ", e);
-        showNotification(e.message);
+        showNotification(e.message, 'bg-red-500');
         goToLobby(); 
     }
 }
 
-// Game State
+// ======= LẮNG NGHE GAME STATE =======
 function listenToGame(roomId) {
     if (gameUnsubscribe) gameUnsubscribe();
     const roomRef = doc(db, roomsCollectionPath, `room-${roomId}`);
-    gameUnsubscribe = onSnapshot(roomRef, (doc) => {
-        if (doc.exists()) {
-            gameState = doc.data();
-            gameState.players = validatePlayersArray(gameState.players);
+    gameUnsubscribe = onSnapshot(roomRef, (docSnap) => {
+        if (docSnap.exists()) {
+            gameState = docSnap.data();
+            // Bảo vệ: convert object => array nếu bị
+            if (gameState.players && !Array.isArray(gameState.players)) {
+                const playersMap = gameState.players;
+                gameState.players = [playersMap['0'] || null, playersMap['1'] || null];
+            }
+            // LOG DEBUG
+            console.log('[DEBUG] userId:', userId, 'players:', gameState.players, 'status:', gameState.status);
+            // Validate players array
+            if (!validatePlayers(gameState.players)) {
+                showNotification("Cảnh báo: Dữ liệu player lỗi! Hãy reload hoặc liên hệ admin.", 'bg-red-500');
+                gameStatus.textContent = 'Có lỗi dữ liệu player! Vui lòng rời phòng và vào lại.';
+                [rpsView, bettingView, diceRollView, resultView].forEach(v => v.classList.add('hidden'));
+                player1Info.innerHTML = `<h3 class="font-bold text-lg text-red-700">Dữ liệu player lỗi!</h3>`;
+                player2Info.innerHTML = `<h3 class="font-bold text-lg text-red-700">Dữ liệu player lỗi!</h3>`;
+                return;
+            }
             updateGameUI();
         } else {
-            showNotification("Chủ phòng đã rời đi. Quay về sảnh chờ.");
+            showNotification("Chủ phòng đã rời đi. Quay về sảnh chờ.", 'bg-yellow-500');
             goToLobby();
         }
     });
@@ -329,13 +352,14 @@ function updateGameUI() {
         gameStatus.textContent = 'Đang tải dữ liệu phòng...';
         return;
     }
-    gameState.players = validatePlayersArray(gameState.players);
     myPlayerIndex = gameState.players.findIndex(p => p && p.id === userId);
+    // LOG DEBUG
+    console.log('[DEBUG] myPlayerIndex:', myPlayerIndex, 'userId:', userId, 'players:', gameState.players);
     if (myPlayerIndex === -1) {
-        gameStatus.textContent = 'Đang đồng bộ...';
+        gameStatus.textContent = 'Đang đồng bộ... (userId hoặc dữ liệu player không trùng khớp)';
         [rpsView, bettingView, diceRollView, resultView].forEach(v => v.classList.add('hidden'));
-        player1Info.innerHTML = `<h3 class="font-bold text-lg">Đang tải...</h3>`;
-        player2Info.innerHTML = `<h3 class="font-bold text-lg">Đang tải...</h3>`;
+        player1Info.innerHTML = `<h3 class="font-bold text-lg text-yellow-700">Đang tải...</h3>`;
+        player2Info.innerHTML = `<h3 class="font-bold text-lg text-yellow-700">Đang tải...</h3>`;
         return;
     }
     if (joinTimeout) clearTimeout(joinTimeout);
@@ -382,6 +406,7 @@ function updateGameUI() {
      }
 }
 
+// ==== CÁC HÀM XỬ LÝ GAME ====
 function handleRPSUI(me, opponent) {
     rpsView.classList.remove('hidden');
     rpsResultText.textContent = '';
@@ -455,6 +480,7 @@ function handleResultUI(me) {
     }
 }
 
+// --- Logic xử lý update từng trường ---
 async function updatePlayerState(key, value) {
     const update = {};
     update[`players.${myPlayerIndex}.${key}`] = value;
@@ -510,13 +536,12 @@ async function rollDice() {
             const roomDoc = await transaction.get(roomRef);
             if (!roomDoc.exists()) throw "Phòng không tồn tại!";
             const currentRoomData = roomDoc.data();
-            let arr = validatePlayersArray(currentRoomData.players);
-            if (!arr[0] || !arr[1]) return; 
+            if (!currentRoomData.players[0] || !currentRoomData.players[1]) return; 
             const die1 = Math.floor(Math.random() * 6) + 1;
             const die2 = Math.floor(Math.random() * 6) + 1;
             const total = die1 + die2;
-            const p1 = arr[0];
-            const p2 = arr[1];
+            const p1 = currentRoomData.players[0];
+            const p2 = currentRoomData.players[1];
             const p1Score = Number.isFinite(p1.score) ? p1.score : 0;
             const p2Score = Number.isFinite(p2.score) ? p2.score : 0;
             let p1Won = p1.bet === total;
@@ -554,8 +579,7 @@ async function checkAndResetForRematch() {
                 const roomDoc = await transaction.get(roomRef);
                 if (!roomDoc.exists()) return;
                 const roomData = roomDoc.data();
-                let arr = validatePlayersArray(roomData.players);
-                if (roomData.status !== 'results' || !arr[0]?.wantsRematch || !arr[1]?.wantsRematch) {
+                if (roomData.status !== 'results' || !roomData.players[0]?.wantsRematch || !roomData.players[1]?.wantsRematch) {
                     return;
                 }
                 const nextTurn = roomData.roundWinner !== null && roomData.roundWinner !== -1 ? roomData.roundWinner : roomData.rpsWinner;
@@ -626,7 +650,7 @@ function animateDice() {
 enterLobbyBtn.addEventListener('click', () => {
     localPlayerName = playerNameInput.value.trim();
     if (!localPlayerName) {
-        showNotification("Vui lòng nhập tên của bạn.");
+        showNotification("Vui lòng nhập tên của bạn.", 'bg-red-600');
         return;
     }
     localStorage.setItem('dice_player_name', localPlayerName);
@@ -654,7 +678,7 @@ enterLobbyBtn.addEventListener('click', () => {
                 await signInAnonymously(auth);
             } catch (error) {
                 console.error("Lỗi đăng nhập ẩn danh:", error);
-                showNotification("Không thể kết nối. Vui lòng làm mới trang.");
+                showNotification("Không thể kết nối. Vui lòng làm mới trang.", 'bg-red-500');
                 enterLobbyBtn.textContent = 'Lỗi kết nối';
             }
         }
