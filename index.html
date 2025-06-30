@@ -160,6 +160,7 @@ let lobbyUnsubscribe = null;
 let gameUnsubscribe = null;
 let userId;
 let joinTimeout = null;
+let diceAnimationIds = {}; // FIXED: To manage and cancel animation loops
 
 // Firestore collection path using the dynamic App ID
 const roomsCollectionPath = `/artifacts/${appId}/public/data/dice-game-rooms`;
@@ -199,8 +200,6 @@ function createDiceTexture(n) {
 }
 
 function setFinalRotation(mesh, value) {
-    // Rotations to show the correct face up
-    // These values might need tweaking depending on the initial texture mapping
     const rotations = {
         1: { x: 0, y: 0, z: 0 },
         2: { x: -Math.PI / 2, y: 0, z: 0 },
@@ -213,7 +212,13 @@ function setFinalRotation(mesh, value) {
     mesh.rotation.set(r.x, r.y, r.z);
 }
 
+// FIXED: Rewritten createDice3D function for robust rendering
 function createDice3D(containerId, value, animate = false) {
+    // Cancel any existing animation for this container
+    if (diceAnimationIds[containerId]) {
+        cancelAnimationFrame(diceAnimationIds[containerId]);
+    }
+
     const container = document.getElementById(containerId);
     if (!container) return;
     container.innerHTML = ''; // Clear previous renderer
@@ -235,7 +240,6 @@ function createDice3D(containerId, value, animate = false) {
     directionalLight.position.set(50, 100, 150);
     scene.add(directionalLight);
 
-    // The order of materials is important: [right, left, top, bottom, front, back]
     const diceMaterials = [
         new THREE.MeshStandardMaterial({ map: createDiceTexture(4) }), // right
         new THREE.MeshStandardMaterial({ map: createDiceTexture(3) }), // left
@@ -249,33 +253,43 @@ function createDice3D(containerId, value, animate = false) {
     const mesh = new THREE.Mesh(geometry, diceMaterials);
     scene.add(mesh);
 
-    let animationFrameId;
+    // Set initial state if not animating
+    if (!animate) {
+        setFinalRotation(mesh, value);
+    }
 
-    function renderLoop() {
+    // A single, continuous loop for both spinning and static states
+    function loop() {
+        if (animate) {
+            mesh.rotation.x += 0.15 + Math.random() * 0.1;
+            mesh.rotation.y += 0.16 + Math.random() * 0.1;
+        }
         renderer.render(scene, camera);
+        diceAnimationIds[containerId] = requestAnimationFrame(loop);
     }
     
-    function animateSpin() {
-        mesh.rotation.x += 0.15 + Math.random() * 0.1;
-        mesh.rotation.y += 0.16 + Math.random() * 0.1;
-        renderer.render(scene, camera);
-        animationFrameId = requestAnimationFrame(animateSpin);
-    }
-
-    if (animate) {
-        animateSpin();
-        // Stop the animation when the main game logic proceeds
-        // The main logic will call createDice3D again with animate=false
-    } else {
-        setFinalRotation(mesh, value);
-        renderLoop();
-    }
+    loop(); // Start the loop
 }
 
+// FIXED: Function to clean up all running animations
+function stopAllDiceAnimations() {
+    for (const id in diceAnimationIds) {
+        if (diceAnimationIds[id]) {
+            cancelAnimationFrame(diceAnimationIds[id]);
+            diceAnimationIds[id] = null;
+        }
+    }
+    // Also clear the container content
+    const d1 = document.getElementById('dice1-3d');
+    const d2 = document.getElementById('dice2-3d');
+    if (d1) d1.innerHTML = '';
+    if (d2) d2.innerHTML = '';
+}
 
 // --- NAVIGATION & ROOM MANAGEMENT ---
 
 async function goToLobby() {
+    stopAllDiceAnimations(); // Clean up 3D scenes
     if (joinTimeout) clearTimeout(joinTimeout);
     if (gameUnsubscribe) gameUnsubscribe();
     gameUnsubscribe = null;
@@ -288,6 +302,7 @@ async function goToLobby() {
 }
 
 async function leaveRoom() {
+    stopAllDiceAnimations(); // Clean up 3D scenes
     if (!currentRoomId || !userId) return goToLobby();
     const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
     try {
