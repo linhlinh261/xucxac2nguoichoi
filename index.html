@@ -7,16 +7,14 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <script>
-        if (typeof __firebase_config === 'undefined') {
-            window.__firebase_config = JSON.stringify({
-                apiKey: "AIzaSyCUrFw_GAv5bIGfwFfuiwCuBcjaNqFohVs",
-                authDomain: "tonghaixucxac.firebaseapp.com",
-                projectId: "tonghaixucxac",
-                storageBucket: "tonghaixucxac.firebasestorage.app",
-                messagingSenderId: "282682257745",
-                appId: "1:282682257745:web:b1d53ac3f903d95be8a370",
-            });
-        }
+        window.__firebase_config = JSON.stringify({
+            apiKey: "AIzaSyCUrFw_GAv5bIGfwFfuiwCuBcjaNqFohVs",
+            authDomain: "tonghaixucxac.firebaseapp.com",
+            projectId: "tonghaixucxac",
+            storageBucket: "tonghaixucxac.firebasestorage.app",
+            messagingSenderId: "282682257745",
+            appId: "1:282682257745:web:b1d53ac3f903d95be8a370",
+        });
     </script>
     <style>
         body { font-family: 'Roboto', sans-serif; }
@@ -99,7 +97,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, updateDoc, collection, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { getFirestore, doc, collection, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 const firebaseConfig = JSON.parse(window.__firebase_config);
 const app = initializeApp(firebaseConfig);
@@ -137,8 +135,8 @@ let gameUnsubscribe = null;
 let userId;
 let joinTimeout = null;
 
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'dice-game-2024';
-const roomsCollectionPath = `/artifacts/${appId}/public/data/dice-game-rooms-v3`;
+const appId = 'dice-game-2024';
+const roomsCollectionPath = `/artifacts/${appId}/public/data/dice-game-rooms`;
 
 function showNotification(message, danger = false) {
     notificationToast.textContent = message;
@@ -180,16 +178,18 @@ async function leaveRoom() {
         await runTransaction(db, async (transaction) => {
             const roomDoc = await transaction.get(roomRef);
             if (!roomDoc.exists()) return;
-            let playersArray = Array.isArray(roomDoc.data().players) ? roomDoc.data().players : [roomDoc.data().players['0'] || null, roomDoc.data().players['1'] || null];
-            const idx = playersArray.findIndex(p => p && p.id === userId);
-            if (idx !== -1) playersArray[idx] = null;
-            const stillPlayers = playersArray.filter(p => p && p.id);
+            let players = Array.isArray(roomDoc.data().players) ? roomDoc.data().players : [roomDoc.data().players['0'] || null, roomDoc.data().players['1'] || null];
+            const idx = players.findIndex(p => p && p.id === userId);
+            if (idx !== -1) players[idx] = null;
+            const stillPlayers = players.filter(p => p && p.id);
             if (stillPlayers.length === 0) {
                 transaction.delete(roomRef);
             } else {
+                let fixedPlayers = [null, null];
+                if (stillPlayers.length === 1) fixedPlayers = [stillPlayers[0], null];
                 transaction.set(roomRef, {
                     ...roomDoc.data(),
-                    players: [playersArray[0] || null, playersArray[1] || null],
+                    players: fixedPlayers,
                     playerCount: stillPlayers.length,
                     status: 'waiting'
                 });
@@ -275,6 +275,7 @@ async function joinRoom(roomId) {
                 };
                 transaction.set(roomRef, roomData);
                 joinOK = true;
+                myPlayerIndex = 0;
                 return;
             }
             roomData = roomDoc.data();
@@ -288,9 +289,6 @@ async function joinRoom(roomId) {
                 }
             }
             if (slot === -1) throw new Error("Phòng đã đầy!");
-            if (roomData.players[slot] && roomData.players[slot].id) {
-                throw new Error("Có lỗi đồng bộ, vui lòng thử lại!");
-            }
             roomData.players[slot] = { id: userId, name: localPlayerName, score: 0, rpsChoice: null, bet: null, wantsRematch: false };
             roomData.playerCount = roomData.players.filter(p => p && p.id).length;
             if(roomData.playerCount === 2) roomData.status = 'rps';
@@ -299,6 +297,7 @@ async function joinRoom(roomId) {
                 players: [roomData.players[0] || null, roomData.players[1] || null]
             });
             joinOK = true;
+            myPlayerIndex = slot;
         });
         if (!joinOK) throw new Error("Không thể vào phòng, thử lại.");
         if(lobbyUnsubscribe) lobbyUnsubscribe();
@@ -308,10 +307,6 @@ async function joinRoom(roomId) {
         showNotification(e.message || "Lỗi không xác định", true);
         goToLobby();
     }
-}
-
-function isValidPlayerObj(p) {
-    return !!p && typeof p === 'object' && typeof p.id === 'string' && typeof p.name === 'string';
 }
 
 function listenToGame(roomId) {
@@ -328,18 +323,8 @@ function listenToGame(roomId) {
             const playersMap = gameState.players;
             gameState.players = [playersMap['0'] || null, playersMap['1'] || null];
         }
-        let errPlayer = false;
-        if (!gameState.players || !Array.isArray(gameState.players) || gameState.players.length !== 2) errPlayer = true;
-        else if (
-            !isValidPlayerObj(gameState.players[0]) ||
-            !isValidPlayerObj(gameState.players[1])
-        ) errPlayer = true;
-        if (errPlayer) {
-            player1Info.innerHTML = `<span class="text-xl text-red-600 font-bold">Dữ liệu player lỗi!</span>`;
-            player2Info.innerHTML = `<span class="text-xl text-red-600 font-bold">Dữ liệu player lỗi!</span>`;
-            gameStatus.innerHTML = `<span class="font-bold text-yellow-700 text-2xl">Có lỗi dữ liệu player! Vui lòng rời phòng và vào lại.</span>`;
-            showNotification("Cảnh báo: Dữ liệu player lỗi! Hãy reload hoặc liên hệ admin.", true);
-            return;
+        if (myPlayerIndex === null || myPlayerIndex === -1) {
+            myPlayerIndex = gameState.players.findIndex(p => p && p.id === userId);
         }
         updateGameUI();
     });
@@ -350,8 +335,10 @@ function updateGameUI() {
         gameStatus.textContent = 'Đang tải dữ liệu phòng...';
         return;
     }
-    myPlayerIndex = gameState.players.findIndex(p => p && p.id === userId);
-    if (myPlayerIndex === -1) {
+    if (myPlayerIndex === null || myPlayerIndex === -1) {
+        myPlayerIndex = gameState.players.findIndex(p => p && p.id === userId);
+    }
+    if (myPlayerIndex === -1 || myPlayerIndex === null) {
         gameStatus.textContent = 'Đang đồng bộ...';
         [rpsView, bettingView, diceRollView, resultView].forEach(v => v.classList.add('hidden'));
         player1Info.innerHTML = `<h3 class="font-bold text-lg">Đang tải...</h3>`;
@@ -402,6 +389,8 @@ function updateGameUI() {
      }
 }
 
+// ==== GAME LOGIC ====
+
 function handleRPSUI(me, opponent) {
     rpsView.classList.remove('hidden');
     rpsResultText.textContent = '';
@@ -411,16 +400,16 @@ function handleRPSUI(me, opponent) {
     if (me?.rpsChoice && opponent?.rpsChoice) {
         rpsChoices.classList.add('hidden');
         const winnerId = determineRPSWinner();
-        if (winnerId === -1) { 
+        if (winnerId === -1) {
             rpsResultText.innerHTML = `Hòa! Cả hai cùng ra ${rpsMap[me.rpsChoice]}. Chơi lại!`;
-            if (myPlayerIndex === 0) continueBtn.classList.remove('hidden'); 
+            if (myPlayerIndex === 0) continueBtn.classList.remove('hidden');
             else gameStatus.textContent = 'Hòa! Đang chờ chủ phòng chơi lại...';
-        } else { 
+        } else {
             const winnerName = gameState.players[winnerId]?.name || `Người chơi ${winnerId + 1}`;
             const p1Name = gameState.players[0]?.name || 'Người chơi 1';
             const p2Name = gameState.players[1]?.name || 'Người chơi 2';
             rpsResultText.innerHTML = `${p1Name} ra ${rpsMap[gameState.players[0].rpsChoice]}, ${p2Name} ra ${rpsMap[gameState.players[1].rpsChoice]}. <br> <span class="text-green-600">${winnerName} thắng và đi trước!</span>`;
-            if (myPlayerIndex === winnerId) continueBtn.classList.remove('hidden'); 
+            if (myPlayerIndex === winnerId) continueBtn.classList.remove('hidden');
             else gameStatus.textContent = `Đang chờ ${winnerName} tiếp tục...`;
         }
     } else if (me?.rpsChoice) {
@@ -428,6 +417,140 @@ function handleRPSUI(me, opponent) {
         rpsChoices.classList.add('hidden');
     } else {
         gameStatus.textContent = 'Đến lượt bạn! Hãy ra Kéo, Búa, hoặc Bao.';
+    }
+}
+
+// --- SỬA ĐÚNG: CẬP NHẬT CẢ OBJECT PLAYER ---
+continueBtn.addEventListener('click', async () => {
+    const winner = determineRPSWinner();
+    const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
+    await runTransaction(db, async (transaction) => {
+        const roomDoc = await transaction.get(roomRef);
+        if (!roomDoc.exists()) return;
+        const data = roomDoc.data();
+        const players = Array.isArray(data.players) ? data.players : [data.players['0'] || null, data.players['1'] || null];
+        if (winner === -1) {
+            if (myPlayerIndex === 0) {
+                players[0] = {...players[0], rpsChoice: null};
+                players[1] = {...players[1], rpsChoice: null};
+                transaction.update(roomRef, { players });
+            }
+        } else {
+            if (myPlayerIndex === winner) {
+                transaction.update(roomRef, { status: 'betting', turn: winner, rpsWinner: winner });
+            }
+        }
+    });
+});
+
+function determineRPSWinner() {
+    const p1c = gameState.players[0]?.rpsChoice;
+    const p2c = gameState.players[1]?.rpsChoice;
+    if (!p1c || !p2c) return null;
+    if (p1c === p2c) return -1;
+    if ((p1c === 'r' && p2c === 's') || (p1c === 's' && p2c === 'p') || (p1c === 'p' && p2c === 'r')) return 0;
+    return 1;
+}
+
+rpsChoices.addEventListener('click', (e) => {
+    const choice = e.target.closest('.rps-choice')?.dataset.choice;
+    if (choice) updatePlayerState('rpsChoice', choice);
+});
+
+// --- SỬA ĐÚNG: UPDATE CẢ OBJECT KHI ĐẶT CƯỢC ---
+async function updatePlayerState(key, value) {
+    if (typeof myPlayerIndex !== 'number' || myPlayerIndex < 0 || myPlayerIndex > 1 || !gameState.players[myPlayerIndex] || !gameState.players[myPlayerIndex].id) {
+        showNotification('Không xác định được bạn là player nào. Hãy rời phòng và vào lại!', true);
+        return;
+    }
+    const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
+    await runTransaction(db, async (transaction) => {
+        const roomDoc = await transaction.get(roomRef);
+        if (!roomDoc.exists()) return;
+        const data = roomDoc.data();
+        const players = Array.isArray(data.players) ? data.players : [data.players['0'] || null, data.players['1'] || null];
+        players[myPlayerIndex] = {...players[myPlayerIndex], [key]: value};
+        transaction.update(roomRef, { players });
+    });
+}
+
+async function placeBet(number) {
+    const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
+    await runTransaction(db, async (transaction) => {
+        const roomDoc = await transaction.get(roomRef);
+        if (!roomDoc.exists()) return;
+        const data = roomDoc.data();
+        const players = Array.isArray(data.players) ? data.players : [data.players['0'] || null, data.players['1'] || null];
+        players[myPlayerIndex] = {...players[myPlayerIndex], bet: number};
+        let updateData = { players };
+        const opponentIndex = 1 - myPlayerIndex;
+        if (players[opponentIndex]?.bet !== null && players[opponentIndex]?.bet !== undefined) {
+            updateData.status = 'rolling';
+            updateData.turn = null;
+        } else {
+            updateData.turn = opponentIndex;
+        }
+        transaction.update(roomRef, updateData);
+    });
+}
+
+// --- SỬA ĐÚNG: CẬP NHẬT ĐIỂM CŨNG QUA OBJECT ---
+async function rollDice() {
+    if (myPlayerIndex !== 0) return;
+    const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
+    await runTransaction(db, async (transaction) => {
+        const roomDoc = await transaction.get(roomRef);
+        if (!roomDoc.exists()) return;
+        const data = roomDoc.data();
+        const players = Array.isArray(data.players) ? data.players : [data.players['0'] || null, data.players['1'] || null];
+        const die1 = Math.floor(Math.random() * 6) + 1;
+        const die2 = Math.floor(Math.random() * 6) + 1;
+        const total = die1 + die2;
+        let p1Won = players[0].bet === total;
+        let p2Won = players[1].bet === total;
+        players[0] = {...players[0], score: (players[0].score||0) + (p1Won ? 1 : 0)};
+        players[1] = {...players[1], score: (players[1].score||0) + (p2Won ? 1 : 0)};
+        transaction.update(roomRef, {
+            players,
+            diceFaces: [die1, die2],
+            diceResult: total,
+            status: 'results',
+            roundWinner: p1Won && p2Won ? -1 : (p1Won ? 0 : (p2Won ? 1 : null))
+        });
+    });
+}
+
+playAgainBtn.addEventListener('click', async () => {
+    await updatePlayerState('wantsRematch', true);
+});
+
+// --- SỬA ĐÚNG: RESET CHO REMATCH QUA OBJECT ---
+async function checkAndResetForRematch() {
+    if (
+        gameState.status === 'results' &&
+        gameState.players[0]?.wantsRematch &&
+        gameState.players[1]?.wantsRematch &&
+        myPlayerIndex === 0
+    ) {
+        const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
+        await runTransaction(db, async (transaction) => {
+            const roomDoc = await transaction.get(roomRef);
+            if (!roomDoc.exists()) return;
+            const data = roomDoc.data();
+            const players = Array.isArray(data.players) ? data.players : [data.players['0'] || null, data.players['1'] || null];
+            players[0] = {...players[0], bet: null, wantsRematch: false, rpsChoice: null};
+            players[1] = {...players[1], bet: null, wantsRematch: false, rpsChoice: null};
+            const nextTurn = data.roundWinner !== null && data.roundWinner !== -1 ? data.roundWinner : data.rpsWinner;
+            transaction.update(roomRef, {
+                players,
+                status: 'betting',
+                turn: nextTurn,
+                rpsWinner: nextTurn,
+                diceResult: null,
+                roundWinner: null,
+                diceFaces: null,
+            });
+        });
     }
 }
 
@@ -472,137 +595,6 @@ function handleResultUI(me) {
     } else {
         playAgainBtn.textContent = 'Chơi Lại';
         playAgainBtn.disabled = false;
-    }
-}
-
-async function updatePlayerState(key, value) {
-    if (typeof myPlayerIndex !== 'number' || myPlayerIndex < 0 || myPlayerIndex > 1 || !gameState.players[myPlayerIndex] || !gameState.players[myPlayerIndex].id) {
-        showNotification('Không xác định được bạn là player nào. Hãy rời phòng và vào lại!', true);
-        return;
-    }
-    const update = {};
-    update[`players.${myPlayerIndex}.${key}`] = value;
-    await updateDoc(doc(db, roomsCollectionPath, `room-${currentRoomId}`), update);
-}
-
-rpsChoices.addEventListener('click', (e) => {
-    const choice = e.target.closest('.rps-choice')?.dataset.choice;
-    if (choice) updatePlayerState('rpsChoice', choice);
-});
-
-function determineRPSWinner() {
-    const p1c = gameState.players[0]?.rpsChoice;
-    const p2c = gameState.players[1]?.rpsChoice;
-    if (!p1c || !p2c) return null; 
-    if (p1c === p2c) return -1; 
-    if ((p1c === 'r' && p2c === 's') || (p1c === 's' && p2c === 'p') || (p1c === 'p' && p2c === 'r')) return 0;
-    return 1;
-}
-
-continueBtn.addEventListener('click', async () => {
-    const winner = determineRPSWinner();
-    const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
-    if (winner === -1) { 
-        if (myPlayerIndex === 0) {
-            await updateDoc(roomRef, { 'players.0.rpsChoice': null, 'players.1.rpsChoice': null });
-        }
-    } else { 
-        if (myPlayerIndex === winner) {
-            await updateDoc(roomRef, { status: 'betting', turn: winner, rpsWinner: winner });
-        }
-    }
-});
-
-async function placeBet(number) {
-    if (typeof myPlayerIndex !== 'number' || myPlayerIndex < 0 || myPlayerIndex > 1 || !gameState.players[myPlayerIndex] || !gameState.players[myPlayerIndex].id) {
-        showNotification('Không xác định được bạn là player nào. Hãy rời phòng và vào lại!', true);
-        return;
-    }
-    const opponentIndex = 1 - myPlayerIndex;
-    const updates = {
-        [`players.${myPlayerIndex}.bet`]: number,
-        turn: opponentIndex
-    };
-    if (gameState.players[opponentIndex] && gameState.players[opponentIndex].bet !== null) {
-        updates.status = 'rolling';
-        updates.turn = null; 
-    }
-    await updateDoc(doc(db, roomsCollectionPath, `room-${currentRoomId}`), updates);
-}
-
-async function rollDice() {
-    if (myPlayerIndex !== 0) return; 
-    const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
-    try {
-        await runTransaction(db, async (transaction) => {
-            const roomDoc = await transaction.get(roomRef);
-            if (!roomDoc.exists()) throw "Phòng không tồn tại!";
-            const currentRoomData = roomDoc.data();
-            if (!currentRoomData.players[0] || !currentRoomData.players[1]) return; 
-            const die1 = Math.floor(Math.random() * 6) + 1;
-            const die2 = Math.floor(Math.random() * 6) + 1;
-            const total = die1 + die2;
-            const p1 = currentRoomData.players[0];
-            const p2 = currentRoomData.players[1];
-            const p1Score = Number.isFinite(p1.score) ? p1.score : 0;
-            const p2Score = Number.isFinite(p2.score) ? p2.score : 0;
-            let p1Won = p1.bet === total;
-            let p2Won = p2.bet === total;
-            transaction.update(roomRef, {
-                diceFaces: [die1, die2],
-                diceResult: total,
-                status: 'results',
-                'players.0.score': p1Score + (p1Won ? 1 : 0),
-                'players.1.score': p2Score + (p2Won ? 1 : 0),
-                roundWinner: p1Won && p2Won ? -1 : (p1Won ? 0 : (p2Won ? 1 : null))
-            });
-        });
-    } catch (e) {
-        console.error("Giao dịch tung xúc xắc thất bại: ", e);
-    }
-}
-
-playAgainBtn.addEventListener('click', async () => {
-    if(gameState.status === 'results') {
-        await updatePlayerState('wantsRematch', true);
-    }
-});
-
-async function checkAndResetForRematch() {
-    if (
-        gameState.status === 'results' &&
-        gameState.players[0]?.wantsRematch &&
-        gameState.players[1]?.wantsRematch &&
-        myPlayerIndex === 0
-    ) {
-        const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
-        try {
-            await runTransaction(db, async (transaction) => {
-                const roomDoc = await transaction.get(roomRef);
-                if (!roomDoc.exists()) return;
-                const roomData = roomDoc.data();
-                if (roomData.status !== 'results' || !roomData.players[0]?.wantsRematch || !roomData.players[1]?.wantsRematch) {
-                    return;
-                }
-                const nextTurn = roomData.roundWinner !== null && roomData.roundWinner !== -1 ? roomData.roundWinner : roomData.rpsWinner;
-                transaction.update(roomRef, {
-                    status: 'betting',
-                    turn: nextTurn,
-                    rpsWinner: nextTurn,
-                    diceResult: null,
-                    roundWinner: null,
-                    diceFaces: null,
-                    'players.0.bet': null,
-                    'players.0.wantsRematch': false,
-                    'players.0.rpsChoice': null,
-                    'players.1.bet': null,
-                    'players.1.wantsRematch': false,
-                    'players.1.rpsChoice': null,
-                });
-            });
-        } catch (e) {
-            console.error("Giao dịch chơi lại thất bại: ", e);
-        }
     }
 }
 
@@ -678,7 +670,6 @@ enterLobbyBtn.addEventListener('click', () => {
             try {
                 await signInAnonymously(auth);
             } catch (error) {
-                console.error("Lỗi đăng nhập ẩn danh:", error);
                 showNotification("Không thể kết nối. Vui lòng làm mới trang.");
                 enterLobbyBtn.textContent = 'Lỗi kết nối';
             }
