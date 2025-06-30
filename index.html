@@ -103,12 +103,27 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebas
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { getFirestore, doc, updateDoc, collection, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+// Hàm chuẩn hóa mảng players từ object hoặc array
+function normalizePlayers(players) {
+    if (!players) return [null, null];
+    // Nếu là object {0:..., 1:...}
+    if (!Array.isArray(players)) {
+        const arr = [];
+        arr[0] = players['0'] || null;
+        arr[1] = players['1'] || null;
+        return arr;
+    }
+    // Đảm bảo luôn đủ 2 slot
+    return [players[0] || null, players[1] || null];
+}
+
 // Firebase Init
 const firebaseConfig = JSON.parse(window.__firebase_config);
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+// UI Elements
 const nameView = document.getElementById('name-view');
 const lobbyView = document.getElementById('lobby-view');
 const gameView = document.getElementById('game-view');
@@ -140,14 +155,16 @@ let userId;
 let joinTimeout = null;
 
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'dice-game-2024';
-const roomsCollectionPath = `/artifacts/${appId}/public/data/dice-game-rooms-v4`; // collection mới!
+const roomsCollectionPath = `/artifacts/${appId}/public/data/dice-game-rooms-v3`;
 
+// Utility
 function showNotification(message) {
     const toast = document.getElementById('notification-toast');
     toast.textContent = message;
     toast.classList.remove('opacity-0');
     setTimeout(() => toast.classList.add('opacity-0'), 4000);
 }
+
 function createDiceDots(face) {
     let dots = '';
     for (let i = 0; i < face; i++) {
@@ -156,22 +173,12 @@ function createDiceDots(face) {
     return `<div class="dice bg-white shadow-md dot-${face}">${dots}</div>`;
 }
 
-// ==== HÀM CHỐT AN TOÀN ====
-function normalizePlayers(players) {
-    if (!Array.isArray(players)) {
-        players = [players['0'] || null, players['1'] || null];
-    }
-    if (players.length < 2) {
-        players[0] = players[0] || null;
-        players[1] = players[1] || null;
-    }
-    return [players[0] || null, players[1] || null];
-}
-
+// Navigation
 function showView(view) {
     [nameView, lobbyView, gameView].forEach(v => v.classList.add('hidden'));
     view.classList.remove('hidden');
 }
+
 async function goToLobby() {
     if (joinTimeout) clearTimeout(joinTimeout);
     if (gameUnsubscribe) gameUnsubscribe();
@@ -184,6 +191,7 @@ async function goToLobby() {
     listenToLobby();
 }
 
+// Rời phòng
 async function leaveRoom() {
     if (!currentRoomId || !userId) return goToLobby();
     const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
@@ -214,6 +222,7 @@ async function leaveRoom() {
 }
 quitGameBtn.addEventListener('click', leaveRoom);
 
+// Lobby
 function listenToLobby() {
     if (lobbyUnsubscribe) lobbyUnsubscribe();
     const roomsRef = collection(db, roomsCollectionPath);
@@ -226,6 +235,7 @@ function listenToLobby() {
         renderLobby(roomsData);
     });
 }
+
 function renderLobby(roomsData) {
     roomList.innerHTML = '';
     for (let i = 1; i <= 30; i++) {
@@ -256,6 +266,7 @@ function renderLobby(roomsData) {
     }
 }
 
+// Tham gia phòng
 async function joinRoom(roomId) {
     if (!userId) {
         showNotification("Đang xác thực, vui lòng đợi một lát...");
@@ -307,13 +318,17 @@ async function joinRoom(roomId) {
     }
 }
 
+// Game State
 function listenToGame(roomId) {
     if (gameUnsubscribe) gameUnsubscribe();
     const roomRef = doc(db, roomsCollectionPath, `room-${roomId}`);
     gameUnsubscribe = onSnapshot(roomRef, (doc) => {
         if (doc.exists()) {
             gameState = doc.data();
+            // DEBUG: Xem structure thực tế từ Firestore
+            console.log('RAW players Firestore:', JSON.stringify(gameState.players));
             gameState.players = normalizePlayers(gameState.players);
+            console.log('NORMALIZED players:', gameState.players, 'userId:', userId);
             updateGameUI();
         } else {
             showNotification("Chủ phòng đã rời đi. Quay về sảnh chờ.");
@@ -321,8 +336,10 @@ function listenToGame(roomId) {
         }
     });
 }
+
 function updateGameUI() {
-    gameState.players = normalizePlayers(gameState.players);
+    // DEBUG: log mỗi lần update UI
+    console.log('UPDATE UI:', gameState.players, 'userId:', userId);
     if (!gameState || !gameState.players) {
         gameStatus.textContent = 'Đang tải dữ liệu phòng...';
         return;
@@ -379,7 +396,7 @@ function updateGameUI() {
      }
 }
 
-// ==== GAME HANDLERS như cũ ====
+// ==== CÁC HÀM XỬ LÝ GAME ====
 function handleRPSUI(me, opponent) {
     rpsView.classList.remove('hidden');
     rpsResultText.textContent = '';
@@ -418,6 +435,7 @@ function handleBettingUI(me, opponent) {
         gameStatus.textContent = `Đang chờ ${opponent?.name || 'đối thủ'} đặt cược...`;
     }
 }
+
 function handleRollingUI() {
     gameStatus.textContent = 'Tất cả đã cược! Chuẩn bị xem kết quả!';
     diceRollView.classList.remove('hidden');
@@ -425,6 +443,7 @@ function handleRollingUI() {
     animateDice();
     if (myPlayerIndex === 0) setTimeout(rollDice, 2500);
 }
+
 function handleResultUI(me) {
     gameStatus.textContent = 'Vòng chơi kết thúc!';
     resultView.classList.remove('hidden');
@@ -462,6 +481,7 @@ rpsChoices.addEventListener('click', (e) => {
     const choice = e.target.closest('.rps-choice')?.dataset.choice;
     if (choice) updatePlayerState('rpsChoice', choice);
 });
+
 function determineRPSWinner() {
     const p1c = gameState.players[0]?.rpsChoice;
     const p2c = gameState.players[1]?.rpsChoice;
@@ -470,6 +490,7 @@ function determineRPSWinner() {
     if ((p1c === 'r' && p2c === 's') || (p1c === 's' && p2c === 'p') || (p1c === 'p' && p2c === 'r')) return 0;
     return 1;
 }
+
 continueBtn.addEventListener('click', async () => {
     const winner = determineRPSWinner();
     const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
@@ -483,6 +504,7 @@ continueBtn.addEventListener('click', async () => {
         }
     }
 });
+
 async function placeBet(number) {
     const opponentIndex = 1 - myPlayerIndex;
     const updates = {
@@ -495,6 +517,7 @@ async function placeBet(number) {
     }
     await updateDoc(doc(db, roomsCollectionPath, `room-${currentRoomId}`), updates);
 }
+
 async function rollDice() {
     if (myPlayerIndex !== 0) return; 
     const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
@@ -503,13 +526,13 @@ async function rollDice() {
             const roomDoc = await transaction.get(roomRef);
             if (!roomDoc.exists()) throw "Phòng không tồn tại!";
             const currentRoomData = roomDoc.data();
-            const plrs = normalizePlayers(currentRoomData.players);
-            if (!plrs[0] || !plrs[1]) return; 
+            const normPlayers = normalizePlayers(currentRoomData.players);
+            if (!normPlayers[0] || !normPlayers[1]) return; 
             const die1 = Math.floor(Math.random() * 6) + 1;
             const die2 = Math.floor(Math.random() * 6) + 1;
             const total = die1 + die2;
-            const p1 = plrs[0];
-            const p2 = plrs[1];
+            const p1 = normPlayers[0];
+            const p2 = normPlayers[1];
             const p1Score = Number.isFinite(p1.score) ? p1.score : 0;
             const p2Score = Number.isFinite(p2.score) ? p2.score : 0;
             let p1Won = p1.bet === total;
@@ -527,11 +550,13 @@ async function rollDice() {
         console.error("Giao dịch tung xúc xắc thất bại: ", e);
     }
 }
+
 playAgainBtn.addEventListener('click', async () => {
     if(gameState.status === 'results') {
         await updatePlayerState('wantsRematch', true);
     }
 });
+
 async function checkAndResetForRematch() {
     if (
         gameState.status === 'results' &&
@@ -545,8 +570,8 @@ async function checkAndResetForRematch() {
                 const roomDoc = await transaction.get(roomRef);
                 if (!roomDoc.exists()) return;
                 const roomData = roomDoc.data();
-                roomData.players = normalizePlayers(roomData.players);
-                if (roomData.status !== 'results' || !roomData.players[0]?.wantsRematch || !roomData.players[1]?.wantsRematch) {
+                const normPlayers = normalizePlayers(roomData.players);
+                if (roomData.status !== 'results' || !normPlayers[0]?.wantsRematch || !normPlayers[1]?.wantsRematch) {
                     return;
                 }
                 const nextTurn = roomData.roundWinner !== null && roomData.roundWinner !== -1 ? roomData.roundWinner : roomData.rpsWinner;
@@ -570,6 +595,7 @@ async function checkAndResetForRematch() {
         }
     }
 }
+
 function renderBettingBoard() {
     const board = document.getElementById('betting-board');
     board.innerHTML = '';
@@ -597,6 +623,7 @@ function renderBettingBoard() {
         board.appendChild(circle);
     }
 }
+
 function animateDice() {
     const dice1El = document.getElementById('dice1');
     const dice2El = document.getElementById('dice2');
@@ -611,6 +638,7 @@ function animateDice() {
     }, 150);
 }
 
+// --- Initial Load ---
 enterLobbyBtn.addEventListener('click', () => {
     localPlayerName = playerNameInput.value.trim();
     if (!localPlayerName) {
