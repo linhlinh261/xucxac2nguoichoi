@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trò Chơi Cược Xúc Xắc (Online với Phòng)</title>
+    <title>Trò Chơi Cược Xúc Xắc 3D (Online với Phòng)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Three.js for 3D Dice -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     
     <script>
         // This configuration will be populated by the environment
@@ -30,16 +32,7 @@
         @keyframes pulse-green { 0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); } 50% { box-shadow: 0 0 0 10px rgba(74, 222, 128, 0); } }
         #notification-toast { transition: opacity 0.3s, top 0.3s; z-index: 9999; }
         .danger { background-color: #ef4444 !important; color: #fff !important; }
-        .dice-container {
-            width: 96px;
-            height: 96px;
-            border: 4px solid #374151;
-            border-radius: 0.5rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background-color: white;
-        }
+        #dice1-3d canvas, #dice2-3d canvas { display: block; margin: auto; }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800 flex items-center justify-center min-h-screen p-4">
@@ -50,7 +43,7 @@
     <!-- Name Entry View -->
     <div id="name-view">
         <div class="bg-white p-8 rounded-xl shadow-lg text-center">
-            <h1 class="text-3xl font-bold mb-6 text-gray-700">Chào mừng đến với Cược Xúc Xắc</h1>
+            <h1 class="text-3xl font-bold mb-6 text-gray-700">Chào mừng đến với Cược Xúc Xắc 3D</h1>
             <div class="mb-6">
                 <label for="player-name" class="block text-lg font-medium mb-2">Nhập tên của bạn để bắt đầu</label>
                 <input type="text" id="player-name" class="w-full max-w-sm mx-auto p-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
@@ -98,12 +91,12 @@
                 <div id="betting-view" class="hidden">
                     <div id="betting-board" class="flex flex-wrap justify-center gap-3"></div>
                 </div>
-                <!-- 2D Dice Roll View -->
+                <!-- 3D Dice Roll View -->
                 <div id="dice-roll-view" class="hidden flex flex-col items-center justify-center min-h-[200px]">
                     <p class="text-2xl font-bold mb-4" id="rolling-text"></p>
                     <div class="flex gap-6 justify-center w-full">
-                        <div id="dice1-2d" class="dice-container"></div>
-                        <div id="dice2-2d" class="dice-container"></div>
+                        <div id="dice1-3d" style="width: 120px; height: 120px;"></div>
+                        <div id="dice2-3d" style="width: 120px; height: 120px;"></div>
                     </div>
                 </div>
                 <!-- Result View -->
@@ -163,8 +156,8 @@ let lobbyUnsubscribe = null;
 let gameUnsubscribe = null;
 let userId;
 let joinTimeout = null;
-let isRollingFlag = false;
-let rollAnimationInterval = null; // Variable for the animation interval
+let diceAnimationIds = {};
+let isRollingFlag = false; 
 
 // Firestore collection path
 const roomsCollectionPath = `/artifacts/${appId}/public/data/dice-game-rooms`;
@@ -183,40 +176,101 @@ function showView(view) {
     view.classList.remove('hidden');
 }
 
-// --- 2D DICE LOGIC ---
-function draw2DDice(containerId, value) {
+// ===== BLOCK CODE ĐÃ FIX MAPPING XÚC XẮC 3D =====
+function createDiceTexture(n) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128; canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, 128, 128);
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(2, 2, 124, 124);
+    ctx.fillStyle = 'black';
+    const dot = (x, y) => { ctx.beginPath(); ctx.arc(x, y, 12, 0, 2 * Math.PI); ctx.fill(); };
+    const positions = { center: [64, 64], topLeft: [32, 32], topRight: [96, 32], bottomLeft: [32, 96], bottomRight: [96, 96], middleLeft: [32, 64], middleRight: [96, 64] };
+    const patterns = { 1: ['center'], 2: ['topLeft', 'bottomRight'], 3: ['topLeft', 'center', 'bottomRight'], 4: ['topLeft', 'topRight', 'bottomLeft', 'bottomRight'], 5: ['topLeft', 'topRight', 'center', 'bottomLeft', 'bottomRight'], 6: ['topLeft', 'topRight', 'middleLeft', 'middleRight', 'bottomLeft', 'bottomRight'] };
+    (patterns[n] || []).forEach(posKey => { const [x, y] = positions[posKey]; dot(x, y); });
+    return new THREE.CanvasTexture(canvas);
+}
+
+// BLOCK QUAN TRỌNG: MAPPING CHUẨN
+function createDice3D(containerId, value, animate = false) {
+    if (diceAnimationIds[containerId]) cancelAnimationFrame(diceAnimationIds[containerId]);
     const container = document.getElementById(containerId);
     if (!container) return;
-    container.innerHTML = ''; 
+    container.innerHTML = '';
+    const width = container.clientWidth, height = container.clientHeight;
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
+    camera.position.z = 150;
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    renderer.setSize(width, height);
+    container.appendChild(renderer.domElement);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(50, 100, 150);
+    scene.add(directionalLight);
+    const diceGroup = new THREE.Group();
+    scene.add(diceGroup);
 
-    const pipsLayouts = {
-        1: [[50, 50]],
-        2: [[25, 25], [75, 75]],
-        3: [[25, 25], [50, 50], [75, 75]],
-        4: [[25, 25], [75, 25], [25, 75], [75, 75]],
-        5: [[25, 25], [75, 25], [50, 50], [25, 75], [75, 75]],
-        6: [[25, 25], [75, 25], [25, 50], [75, 50], [25, 75], [75, 75]]
-    };
+    // === Mapping theo chuẩn quốc tế:
+    const diceMaterials = [
+        new THREE.MeshStandardMaterial({ map: createDiceTexture(3) }), // +X (right)
+        new THREE.MeshStandardMaterial({ map: createDiceTexture(4) }), // -X (left)
+        new THREE.MeshStandardMaterial({ map: createDiceTexture(2) }), // +Y (top)
+        new THREE.MeshStandardMaterial({ map: createDiceTexture(5) }), // -Y (bottom)
+        new THREE.MeshStandardMaterial({ map: createDiceTexture(1) }), // +Z (front/camera)
+        new THREE.MeshStandardMaterial({ map: createDiceTexture(6) })  // -Z (back)
+    ];
 
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 100 100');
-    
-    const pips = pipsLayouts[value] || [];
-    pips.forEach(pip => {
-        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        circle.setAttribute('cx', pip[0]);
-        circle.setAttribute('cy', pip[1]);
-        circle.setAttribute('r', 8);
-        circle.setAttribute('fill', 'black');
-        svg.appendChild(circle);
-    });
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(70, 70, 70), diceMaterials);
+    diceGroup.add(mesh);
 
-    container.appendChild(svg);
+    function setFinalRotation(group, value) {
+        // Đảm bảo mặt số value sẽ hướng ra phía trước camera
+        const faceRotation = {
+            1: { x: 0, y: 0, z: 0 }, // mặt 1 ra trước
+            2: { x: -Math.PI / 2, y: 0, z: 0 }, // mặt 2 ra trước
+            3: { x: 0, y: Math.PI / 2, z: 0 },  // mặt 3 ra trước
+            4: { x: 0, y: -Math.PI / 2, z: 0 }, // mặt 4 ra trước
+            5: { x: Math.PI / 2, y: 0, z: 0 },  // mặt 5 ra trước
+            6: { x: Math.PI, y: 0, z: 0 }       // mặt 6 ra trước
+        };
+        const r = faceRotation[value] || faceRotation[1];
+        group.rotation.set(r.x, r.y, r.z);
+    }
+
+    function loop() {
+        if (animate) {
+            diceGroup.rotation.x += 0.15 + Math.random() * 0.1;
+            diceGroup.rotation.y += 0.16 + Math.random() * 0.1;
+        }
+        renderer.render(scene, camera);
+        diceAnimationIds[containerId] = requestAnimationFrame(loop);
+    }
+    if (animate) {
+        loop();
+    } else {
+        setFinalRotation(diceGroup, value);
+        renderer.render(scene, camera);
+    }
 }
+
+function stopAllDiceAnimations() {
+    Object.keys(diceAnimationIds).forEach(id => {
+        if (diceAnimationIds[id]) {
+            cancelAnimationFrame(diceAnimationIds[id]);
+            diceAnimationIds[id] = null;
+        }
+    });
+}
+// ===== KẾT THÚC BLOCK FIX =====
 
 
 // --- NAVIGATION & ROOM MANAGEMENT ---
 async function goToLobby() {
+    stopAllDiceAnimations();
     if (joinTimeout) clearTimeout(joinTimeout);
     if (gameUnsubscribe) gameUnsubscribe();
     gameUnsubscribe = null; currentRoomId = null; myPlayerIndex = null;
@@ -227,6 +281,7 @@ async function goToLobby() {
 }
 
 async function leaveRoom() {
+    stopAllDiceAnimations();
     if (!currentRoomId || !userId) return goToLobby();
     const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
     try {
@@ -497,13 +552,9 @@ function handleRollingUI() {
     gameStatus.textContent = 'Tất cả đã cược! Chuẩn bị xem kết quả!';
     diceRollView.classList.remove('hidden');
     document.getElementById('rolling-text').textContent = "Đang tung xúc xắc...";
-    
-    if (rollAnimationInterval) clearInterval(rollAnimationInterval);
-    rollAnimationInterval = setInterval(() => {
-        draw2DDice('dice1-2d', Math.floor(Math.random() * 6) + 1);
-        draw2DDice('dice2-2d', Math.floor(Math.random() * 6) + 1);
-    }, 100);
-
+    stopAllDiceAnimations();
+    createDice3D('dice1-3d', 1, true);
+    createDice3D('dice2-3d', 1, true);
     if (myPlayerIndex === 0) {
         setTimeout(rollDice, 2500);
     }
@@ -541,10 +592,7 @@ async function rollDice() {
 }
 
 function handleResultUI(me) {
-    if (rollAnimationInterval) {
-        clearInterval(rollAnimationInterval);
-        rollAnimationInterval = null;
-    }
+    stopAllDiceAnimations(); // FIX: Stop animation for all players when results are in.
     isRollingFlag = false; 
 
     gameStatus.textContent = 'Vòng chơi kết thúc!';
@@ -555,8 +603,8 @@ function handleResultUI(me) {
     if (gameState.diceFaces) {
         diceRollView.classList.remove('hidden');
         document.getElementById('rolling-text').textContent = "Kết quả xúc xắc:";
-        draw2DDice('dice1-2d', gameState.diceFaces[0]);
-        draw2DDice('dice2-2d', gameState.diceFaces[1]);
+        createDice3D('dice1-3d', gameState.diceFaces[0], false);
+        createDice3D('dice2-3d', gameState.diceFaces[1], false);
     }
     const winnerText = document.getElementById('winner-text');
     const winnerId = gameState.roundWinner;
