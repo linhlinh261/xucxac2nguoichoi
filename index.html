@@ -198,47 +198,38 @@
             listenToLobby();
         }
         
-        async function leaveRoom() {
-            if (!currentRoomId || !userId) return goToLobby();
-
-            const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
-          try {
+       async function leaveRoom() {
+  if (!currentRoomId || !userId) return goToLobby();
+  const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
+  try {
     await runTransaction(db, async (transaction) => {
-        const roomDoc = await transaction.get(roomRef);
-        if (!roomDoc.exists()) return;
-
-        let roomData = roomDoc.data();
-        let playersArray = roomData.players;
-        if (playersArray && !Array.isArray(playersArray)) {
-            playersArray = [playersArray['0'] || null, playersArray['1'] || null];
-        }
-
-        if (!playersArray) {
-            transaction.delete(roomRef);
-            return;
-        }
-
-        const newPlayers = playersArray.filter(p => p && p.id !== userId);
-
-        if (newPlayers.length === 0) {
-            transaction.delete(roomRef);
-        } else {
-            const finalPlayers = newPlayers.length === 1 ? [newPlayers[0], null] : [null, null];
-            transaction.set(roomRef, {
-                ...roomData,
-                players: finalPlayers,
-                playerCount: newPlayers.length,
-                status: 'waiting'
-            });
-        }
-    }); 
-} catch (error) {
-    console.error("Error leaving room: ", error);
+      const roomDoc = await transaction.get(roomRef);
+      if (!roomDoc.exists()) return;
+      let playersArray = roomDoc.data().players;
+      if (playersArray && !Array.isArray(playersArray)) {
+        playersArray = [playersArray['0'] || null, playersArray['1'] || null];
+      }
+      const idx = playersArray.findIndex(p => p && p.id === userId);
+      if (idx !== -1) playersArray[idx] = null;
+      const stillPlayers = playersArray.filter(p => p !== null);
+      if (stillPlayers.length === 0) {
+        transaction.delete(roomRef);
+      } else {
+        transaction.set(roomRef, {
+          ...roomDoc.data(),
+          players: playersArray,
+          playerCount: 1,
+          status: 'waiting'
+        });
+      }
+    });
+  } catch (error) {
     showNotification("Lỗi khi rời phòng.");
-} finally {
+  } finally {
     goToLobby();
+  }
 }
-        }
+
         // --- Lobby Logic ---
         function listenToLobby() {
             if (lobbyUnsubscribe) lobbyUnsubscribe();
@@ -363,6 +354,7 @@
                     }
                     
                     updateGameUI();
+                    console.log('players:', gameState.players, 'userId:', userId);
                 } else {
                     showNotification("Chủ phòng đã rời đi. Quay về sảnh chờ.");
                     goToLobby();
