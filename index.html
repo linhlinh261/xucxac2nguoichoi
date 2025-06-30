@@ -224,15 +224,13 @@
                     if (newPlayers.length === 0) {
                         transaction.delete(roomRef);
                     } else {
-                        const finalPlayers = [newPlayers[0], null];
-                        transaction.set(roomRef, {
-                            ...roomData,
-                            players: finalPlayers,
-                            playerCount: 1,
-                            status: 'waiting'
-                        });
-                    }
-                });
+                        const finalPlayers = newPlayers.length === 1 ? [newPlayers[0], null] : [null, null];
+transaction.set(roomRef, {
+    ...roomData,
+    players: finalPlayers,
+    playerCount: newPlayers.length,
+    status: 'waiting'
+});
             } catch (error) {
                 console.error("Error leaving room: ", error);
                 showNotification("Lỗi khi rời phòng.");
@@ -331,7 +329,7 @@
                         if (roomData.playerCount >= 2) {
                             throw new Error("Phòng đã đầy!");
                         }
-                        const emptySlot = roomData.players.findIndex(p => p === null);
+                        const emptySlot = roomData.players.findIndex(p => !p);
                         if (emptySlot === -1) throw new Error("Phòng đầy nhưng playerCount không chính xác.");
                         
                         roomData.players[emptySlot] = { id: userId, name: localPlayerName, score: 0, rpsChoice: null, bet: null, wantsRematch: false };
