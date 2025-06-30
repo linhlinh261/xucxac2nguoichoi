@@ -29,14 +29,8 @@
         .bet-circle.selected-by-opponent { background-color: #ef4444; color: white; border-color: #b91c1c; }
         .bet-circle.correct-guess { animation: pulse-green 2s infinite; }
         @keyframes pulse-green { 0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); } 50% { box-shadow: 0 0 0 10px rgba(74, 222, 128, 0); } }
-        #notification-toast {
-            transition: opacity 0.3s, top 0.3s;
-            z-index: 9999;
-        }
-        .danger {
-            background-color: #ef4444 !important;
-            color: #fff !important;
-        }
+        #notification-toast { transition: opacity 0.3s, top 0.3s; z-index: 9999; }
+        .danger { background-color: #ef4444 !important; color: #fff !important; }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800 flex items-center justify-center min-h-screen p-4">
@@ -107,13 +101,11 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebas
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { getFirestore, doc, updateDoc, collection, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// Firebase Init
 const firebaseConfig = JSON.parse(window.__firebase_config);
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// UI Elements
 const nameView = document.getElementById('name-view');
 const lobbyView = document.getElementById('lobby-view');
 const gameView = document.getElementById('game-view');
@@ -289,7 +281,6 @@ async function joinRoom(roomId) {
             if (!Array.isArray(roomData.players)) {
                 roomData.players = [roomData.players['0'] || null, roomData.players['1'] || null];
             }
-            // Bảo vệ race: tìm đúng slot rỗng đầu tiên (null hoặc thiếu id)
             let slot = -1;
             for (let i = 0; i < 2; ++i) {
                 if (!roomData.players[i] || !roomData.players[i].id) {
@@ -297,7 +288,6 @@ async function joinRoom(roomId) {
                 }
             }
             if (slot === -1) throw new Error("Phòng đã đầy!");
-            // Đảm bảo không ghi đè slot đã có id
             if (roomData.players[slot] && roomData.players[slot].id) {
                 throw new Error("Có lỗi đồng bộ, vui lòng thử lại!");
             }
@@ -323,12 +313,6 @@ async function joinRoom(roomId) {
 function isValidPlayerObj(p) {
     return !!p && typeof p === 'object' && typeof p.id === 'string' && typeof p.name === 'string';
 }
-function validatePlayers(playersArr) {
-    // Phải là mảng 2 object, không null, phải đủ id + name
-    if (!Array.isArray(playersArr) || playersArr.length !== 2) return false;
-    if (!isValidPlayerObj(playersArr[0]) || !isValidPlayerObj(playersArr[1])) return false;
-    return true;
-}
 
 function listenToGame(roomId) {
     if (gameUnsubscribe) gameUnsubscribe();
@@ -344,12 +328,11 @@ function listenToGame(roomId) {
             const playersMap = gameState.players;
             gameState.players = [playersMap['0'] || null, playersMap['1'] || null];
         }
-        // VALIDATE dữ liệu players, nếu lỗi thì out về lobby
         let errPlayer = false;
         if (!gameState.players || !Array.isArray(gameState.players) || gameState.players.length !== 2) errPlayer = true;
         else if (
-            !gameState.players[0] || !gameState.players[0].id || !gameState.players[0].name ||
-            !gameState.players[1] || !gameState.players[1].id || !gameState.players[1].name
+            !isValidPlayerObj(gameState.players[0]) ||
+            !isValidPlayerObj(gameState.players[1])
         ) errPlayer = true;
         if (errPlayer) {
             player1Info.innerHTML = `<span class="text-xl text-red-600 font-bold">Dữ liệu player lỗi!</span>`;
@@ -368,9 +351,6 @@ function updateGameUI() {
         return;
     }
     myPlayerIndex = gameState.players.findIndex(p => p && p.id === userId);
-    // DEBUG
-    console.log('[DEBUG] myPlayerIndex:', myPlayerIndex, 'userId:', userId, 'players:', gameState.players, 'status:', gameState.status);
-
     if (myPlayerIndex === -1) {
         gameStatus.textContent = 'Đang đồng bộ...';
         [rpsView, bettingView, diceRollView, resultView].forEach(v => v.classList.add('hidden'));
@@ -422,7 +402,6 @@ function updateGameUI() {
      }
 }
 
-// ==== CÁC HÀM XỬ LÝ GAME ====
 function handleRPSUI(me, opponent) {
     rpsView.classList.remove('hidden');
     rpsResultText.textContent = '';
@@ -497,6 +476,10 @@ function handleResultUI(me) {
 }
 
 async function updatePlayerState(key, value) {
+    if (typeof myPlayerIndex !== 'number' || myPlayerIndex < 0 || myPlayerIndex > 1 || !gameState.players[myPlayerIndex] || !gameState.players[myPlayerIndex].id) {
+        showNotification('Không xác định được bạn là player nào. Hãy rời phòng và vào lại!', true);
+        return;
+    }
     const update = {};
     update[`players.${myPlayerIndex}.${key}`] = value;
     await updateDoc(doc(db, roomsCollectionPath, `room-${currentRoomId}`), update);
@@ -531,6 +514,10 @@ continueBtn.addEventListener('click', async () => {
 });
 
 async function placeBet(number) {
+    if (typeof myPlayerIndex !== 'number' || myPlayerIndex < 0 || myPlayerIndex > 1 || !gameState.players[myPlayerIndex] || !gameState.players[myPlayerIndex].id) {
+        showNotification('Không xác định được bạn là player nào. Hãy rời phòng và vào lại!', true);
+        return;
+    }
     const opponentIndex = 1 - myPlayerIndex;
     const updates = {
         [`players.${myPlayerIndex}.bet`]: number,
@@ -661,7 +648,6 @@ function animateDice() {
     }, 150);
 }
 
-// --- Initial Load ---
 enterLobbyBtn.addEventListener('click', () => {
     localPlayerName = playerNameInput.value.trim();
     if (!localPlayerName) {
