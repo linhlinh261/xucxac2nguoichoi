@@ -1,37 +1,45 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-<meta charset="UTF-8">
-<title>Trò Chơi Cược Xúc Xắc (Debug Validate)</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-<script>
-if (typeof __firebase_config === 'undefined') {
-    window.__firebase_config = JSON.stringify({
-        apiKey: "AIzaSyCUrFw_GAv5bIGfwFfuiwCuBcjaNqFohVs",
-        authDomain: "tonghaixucxac.firebaseapp.com",
-        projectId: "tonghaixucxac",
-        storageBucket: "tonghaixucxac.firebasestorage.app",
-        messagingSenderId: "282682257745",
-        appId: "1:282682257745:web:b1d53ac3f903d95be8a370",
-    });
-}
-</script>
-<style>
-body { font-family: 'Roboto', sans-serif; }
-.room-btn { transition: all 0.2s ease-in-out; }
-.room-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-.dice { width: 80px; height: 80px; padding: 10px; border-radius: 12px; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 5px; }
-.dot { width: 14px; height: 14px; background-color: black; border-radius: 50%; }
-.dot-container { display: flex; justify-content: center; align-items: center; }
-.bet-circle.selected-by-me { background-color: #3b82f6; color: white; border-color: #1d4ed8; }
-.bet-circle.selected-by-opponent { background-color: #ef4444; color: white; border-color: #b91c1c; }
-.bet-circle.correct-guess { animation: pulse-green 2s infinite; }
-@keyframes pulse-green { 0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); } 50% { box-shadow: 0 0 0 10px rgba(74, 222, 128, 0); } }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trò Chơi Cược Xúc Xắc (Online với Phòng)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <script>
+        if (typeof __firebase_config === 'undefined') {
+            window.__firebase_config = JSON.stringify({
+                apiKey: "AIzaSyCUrFw_GAv5bIGfwFfuiwCuBcjaNqFohVs",
+                authDomain: "tonghaixucxac.firebaseapp.com",
+                projectId: "tonghaixucxac",
+                storageBucket: "tonghaixucxac.firebasestorage.app",
+                messagingSenderId: "282682257745",
+                appId: "1:282682257745:web:b1d53ac3f903d95be8a370",
+            });
+        }
+    </script>
+    <style>
+        body { font-family: 'Roboto', sans-serif; }
+        .room-btn { transition: all 0.2s ease-in-out; }
+        .room-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .dice { width: 80px; height: 80px; padding: 10px; border-radius: 12px; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 5px; }
+        .dot { width: 14px; height: 14px; background-color: black; border-radius: 50%; }
+        .dot-container { display: flex; justify-content: center; align-items: center; }
+        .bet-circle.selected-by-me { background-color: #3b82f6; color: white; border-color: #1d4ed8; }
+        .bet-circle.selected-by-opponent { background-color: #ef4444; color: white; border-color: #b91c1c; }
+        .bet-circle.correct-guess { animation: pulse-green 2s infinite; }
+        @keyframes pulse-green { 0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); } 50% { box-shadow: 0 0 0 10px rgba(74, 222, 128, 0); } }
+        #notification-toast {
+            transition: opacity 0.3s, top 0.3s;
+            z-index: 9999;
+        }
+        .danger {
+            background-color: #ef4444 !important;
+            color: #fff !important;
+        }
+    </style>
 </head>
 <body class="bg-gray-100 text-gray-800 flex items-center justify-center min-h-screen p-4">
-
 <div id="app-container" class="w-full max-w-5xl mx-auto">
     <div id="notification-toast" class="fixed top-5 right-5 bg-blue-600 text-white py-2 px-4 rounded-lg shadow-lg transition-opacity duration-300 z-50 opacity-0 pointer-events-none"></div>
     <div id="name-view">
@@ -94,20 +102,18 @@ body { font-family: 'Roboto', sans-serif; }
         </div>
     </div>
 </div>
-
 <script type="module">
-// ======= IMPORT FIREBASE SDK =======
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { getFirestore, doc, updateDoc, collection, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// ======= FIREBASE INIT =======
+// Firebase Init
 const firebaseConfig = JSON.parse(window.__firebase_config);
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// ======= UI =======
+// UI Elements
 const nameView = document.getElementById('name-view');
 const lobbyView = document.getElementById('lobby-view');
 const gameView = document.getElementById('game-view');
@@ -128,6 +134,7 @@ const playAgainBtn = document.getElementById('play-again-btn');
 const rpsChoices = document.getElementById('rps-choices');
 const rpsResultText = document.getElementById('rps-result-text');
 const continueBtn = document.getElementById('continue-btn');
+const notificationToast = document.getElementById('notification-toast');
 
 let localPlayerName = '';
 let currentRoomId = null;
@@ -141,12 +148,12 @@ let joinTimeout = null;
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'dice-game-2024';
 const roomsCollectionPath = `/artifacts/${appId}/public/data/dice-game-rooms-v3`;
 
-// ======= UTIL =======
-function showNotification(message, color = 'bg-blue-600') {
-    const toast = document.getElementById('notification-toast');
-    toast.textContent = message;
-    toast.className = `fixed top-5 right-5 text-white py-2 px-4 rounded-lg shadow-lg transition-opacity duration-300 z-50 opacity-100 pointer-events-auto ${color}`;
-    setTimeout(() => { toast.classList.add('opacity-0'); }, 4000);
+function showNotification(message, danger = false) {
+    notificationToast.textContent = message;
+    notificationToast.classList.remove('opacity-0');
+    if (danger) notificationToast.classList.add('danger');
+    else notificationToast.classList.remove('danger');
+    setTimeout(() => notificationToast.classList.add('opacity-0'), 4000);
 }
 
 function createDiceDots(face) {
@@ -157,16 +164,6 @@ function createDiceDots(face) {
     return `<div class="dice bg-white shadow-md dot-${face}">${dots}</div>`;
 }
 
-function validatePlayers(playersArr) {
-    if (!Array.isArray(playersArr) || playersArr.length !== 2) return false;
-    let ok = true;
-    for (const p of playersArr) {
-        if (p !== null && (!p.id || !p.name)) ok = false;
-    }
-    return ok;
-}
-
-// ======= NAVIGATION =======
 function showView(view) {
     [nameView, lobbyView, gameView].forEach(v => v.classList.add('hidden'));
     view.classList.remove('hidden');
@@ -184,7 +181,6 @@ async function goToLobby() {
     listenToLobby();
 }
 
-// ======= RỜI PHÒNG =======
 async function leaveRoom() {
     if (!currentRoomId || !userId) return goToLobby();
     const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
@@ -192,13 +188,10 @@ async function leaveRoom() {
         await runTransaction(db, async (transaction) => {
             const roomDoc = await transaction.get(roomRef);
             if (!roomDoc.exists()) return;
-            let playersArray = roomDoc.data().players;
-            if (playersArray && !Array.isArray(playersArray)) {
-                playersArray = [playersArray['0'] || null, playersArray['1'] || null];
-            }
+            let playersArray = Array.isArray(roomDoc.data().players) ? roomDoc.data().players : [roomDoc.data().players['0'] || null, roomDoc.data().players['1'] || null];
             const idx = playersArray.findIndex(p => p && p.id === userId);
             if (idx !== -1) playersArray[idx] = null;
-            const stillPlayers = playersArray.filter(p => p !== null);
+            const stillPlayers = playersArray.filter(p => p && p.id);
             if (stillPlayers.length === 0) {
                 transaction.delete(roomRef);
             } else {
@@ -211,14 +204,13 @@ async function leaveRoom() {
             }
         });
     } catch (error) {
-        showNotification("Lỗi khi rời phòng.", 'bg-red-500');
+        showNotification("Lỗi khi rời phòng.");
     } finally {
         goToLobby();
     }
 }
 quitGameBtn.addEventListener('click', leaveRoom);
 
-// ======= LOBBY =======
 function listenToLobby() {
     if (lobbyUnsubscribe) lobbyUnsubscribe();
     const roomsRef = collection(db, roomsCollectionPath);
@@ -262,10 +254,9 @@ function renderLobby(roomsData) {
     }
 }
 
-// ======= THAM GIA PHÒNG =======
 async function joinRoom(roomId) {
     if (!userId) {
-        showNotification("Đang xác thực, vui lòng đợi một lát...", 'bg-yellow-600');
+        showNotification("Đang xác thực, vui lòng đợi một lát...");
         return;
     }
     const roomRef = doc(db, roomsCollectionPath, `room-${roomId}`);
@@ -275,10 +266,11 @@ async function joinRoom(roomId) {
         gameStatus.textContent = 'Đang tham gia phòng...';
         joinTimeout = setTimeout(() => {
             if (myPlayerIndex === null) {
-                showNotification("Không thể vào phòng. Vui lòng thử lại!", 'bg-red-500');
+                showNotification("Không thể vào phòng. Vui lòng thử lại!");
                 goToLobby();
             }
         }, 10000);
+        let joinOK = false;
         await runTransaction(db, async (transaction) => {
             const roomDoc = await transaction.get(roomRef);
             let roomData;
@@ -289,61 +281,84 @@ async function joinRoom(roomId) {
                     playerCount: 1,
                     status: 'waiting',
                 };
-            } else {
-                roomData = roomDoc.data();
-                if (roomData.players && !Array.isArray(roomData.players)) {
-                    roomData.players = [roomData.players['0'] || null, roomData.players['1'] || null];
-                }
-                if (roomData.playerCount >= 2) throw new Error("Phòng đã đầy!");
-                const emptySlot = roomData.players.findIndex(p => !p);
-                if (emptySlot === -1) throw new Error("Phòng đầy nhưng playerCount không chính xác.");
-                roomData.players[emptySlot] = { id: userId, name: localPlayerName, score: 0, rpsChoice: null, bet: null, wantsRematch: false };
-                roomData.playerCount = roomData.players.filter(Boolean).length;
-                if(roomData.playerCount === 2) roomData.status = 'rps';
+                transaction.set(roomRef, roomData);
+                joinOK = true;
+                return;
             }
+            roomData = roomDoc.data();
+            if (!Array.isArray(roomData.players)) {
+                roomData.players = [roomData.players['0'] || null, roomData.players['1'] || null];
+            }
+            // Bảo vệ race: tìm đúng slot rỗng đầu tiên (null hoặc thiếu id)
+            let slot = -1;
+            for (let i = 0; i < 2; ++i) {
+                if (!roomData.players[i] || !roomData.players[i].id) {
+                    slot = i; break;
+                }
+            }
+            if (slot === -1) throw new Error("Phòng đã đầy!");
+            // Đảm bảo không ghi đè slot đã có id
+            if (roomData.players[slot] && roomData.players[slot].id) {
+                throw new Error("Có lỗi đồng bộ, vui lòng thử lại!");
+            }
+            roomData.players[slot] = { id: userId, name: localPlayerName, score: 0, rpsChoice: null, bet: null, wantsRematch: false };
+            roomData.playerCount = roomData.players.filter(p => p && p.id).length;
+            if(roomData.playerCount === 2) roomData.status = 'rps';
             transaction.set(roomRef, {
                 ...roomData,
-                players: [roomData.players[0] || null, roomData.players[1] || null],
+                players: [roomData.players[0] || null, roomData.players[1] || null]
             });
+            joinOK = true;
         });
+        if (!joinOK) throw new Error("Không thể vào phòng, thử lại.");
         if(lobbyUnsubscribe) lobbyUnsubscribe();
         currentRoomId = roomId;
         listenToGame(roomId);
     } catch (e) {
-        console.error("Join room failed: ", e);
-        showNotification(e.message, 'bg-red-500');
-        goToLobby(); 
+        showNotification(e.message || "Lỗi không xác định", true);
+        goToLobby();
     }
 }
 
-// ======= LẮNG NGHE GAME STATE =======
+function isValidPlayerObj(p) {
+    return !!p && typeof p === 'object' && typeof p.id === 'string' && typeof p.name === 'string';
+}
+function validatePlayers(playersArr) {
+    // Phải là mảng 2 object, không null, phải đủ id + name
+    if (!Array.isArray(playersArr) || playersArr.length !== 2) return false;
+    if (!isValidPlayerObj(playersArr[0]) || !isValidPlayerObj(playersArr[1])) return false;
+    return true;
+}
+
 function listenToGame(roomId) {
     if (gameUnsubscribe) gameUnsubscribe();
     const roomRef = doc(db, roomsCollectionPath, `room-${roomId}`);
     gameUnsubscribe = onSnapshot(roomRef, (docSnap) => {
-        if (docSnap.exists()) {
-            gameState = docSnap.data();
-            // Bảo vệ: convert object => array nếu bị
-            if (gameState.players && !Array.isArray(gameState.players)) {
-                const playersMap = gameState.players;
-                gameState.players = [playersMap['0'] || null, playersMap['1'] || null];
-            }
-            // LOG DEBUG
-            console.log('[DEBUG] userId:', userId, 'players:', gameState.players, 'status:', gameState.status);
-            // Validate players array
-            if (!validatePlayers(gameState.players)) {
-                showNotification("Cảnh báo: Dữ liệu player lỗi! Hãy reload hoặc liên hệ admin.", 'bg-red-500');
-                gameStatus.textContent = 'Có lỗi dữ liệu player! Vui lòng rời phòng và vào lại.';
-                [rpsView, bettingView, diceRollView, resultView].forEach(v => v.classList.add('hidden'));
-                player1Info.innerHTML = `<h3 class="font-bold text-lg text-red-700">Dữ liệu player lỗi!</h3>`;
-                player2Info.innerHTML = `<h3 class="font-bold text-lg text-red-700">Dữ liệu player lỗi!</h3>`;
-                return;
-            }
-            updateGameUI();
-        } else {
-            showNotification("Chủ phòng đã rời đi. Quay về sảnh chờ.", 'bg-yellow-500');
+        if (!docSnap.exists()) {
+            showNotification("Chủ phòng đã rời đi. Quay về sảnh chờ.");
             goToLobby();
+            return;
         }
+        gameState = docSnap.data();
+        if (!Array.isArray(gameState.players)) {
+            const playersMap = gameState.players;
+            gameState.players = [playersMap['0'] || null, playersMap['1'] || null];
+        }
+        // VALIDATE dữ liệu players, nếu lỗi thì out về lobby
+        let errPlayer = false;
+        if (!gameState.players || !Array.isArray(gameState.players) || gameState.players.length !== 2) errPlayer = true;
+        else if (
+            !gameState.players[0] || !gameState.players[0].id || !gameState.players[0].name ||
+            !gameState.players[1] || !gameState.players[1].id || !gameState.players[1].name
+        ) errPlayer = true;
+        if (errPlayer) {
+            player1Info.innerHTML = `<span class="text-xl text-red-600 font-bold">Dữ liệu player lỗi!</span>`;
+            player2Info.innerHTML = `<span class="text-xl text-red-600 font-bold">Dữ liệu player lỗi!</span>`;
+            gameStatus.innerHTML = `<span class="font-bold text-yellow-700 text-2xl">Có lỗi dữ liệu player! Vui lòng rời phòng và vào lại.</span>`;
+            showNotification("Cảnh báo: Dữ liệu player lỗi! Hãy reload hoặc liên hệ admin.", true);
+            return;
+        }
+        updateGameUI();
     });
 }
 
@@ -353,13 +368,14 @@ function updateGameUI() {
         return;
     }
     myPlayerIndex = gameState.players.findIndex(p => p && p.id === userId);
-    // LOG DEBUG
-    console.log('[DEBUG] myPlayerIndex:', myPlayerIndex, 'userId:', userId, 'players:', gameState.players);
+    // DEBUG
+    console.log('[DEBUG] myPlayerIndex:', myPlayerIndex, 'userId:', userId, 'players:', gameState.players, 'status:', gameState.status);
+
     if (myPlayerIndex === -1) {
-        gameStatus.textContent = 'Đang đồng bộ... (userId hoặc dữ liệu player không trùng khớp)';
+        gameStatus.textContent = 'Đang đồng bộ...';
         [rpsView, bettingView, diceRollView, resultView].forEach(v => v.classList.add('hidden'));
-        player1Info.innerHTML = `<h3 class="font-bold text-lg text-yellow-700">Đang tải...</h3>`;
-        player2Info.innerHTML = `<h3 class="font-bold text-lg text-yellow-700">Đang tải...</h3>`;
+        player1Info.innerHTML = `<h3 class="font-bold text-lg">Đang tải...</h3>`;
+        player2Info.innerHTML = `<h3 class="font-bold text-lg">Đang tải...</h3>`;
         return;
     }
     if (joinTimeout) clearTimeout(joinTimeout);
@@ -480,7 +496,6 @@ function handleResultUI(me) {
     }
 }
 
-// --- Logic xử lý update từng trường ---
 async function updatePlayerState(key, value) {
     const update = {};
     update[`players.${myPlayerIndex}.${key}`] = value;
@@ -650,7 +665,7 @@ function animateDice() {
 enterLobbyBtn.addEventListener('click', () => {
     localPlayerName = playerNameInput.value.trim();
     if (!localPlayerName) {
-        showNotification("Vui lòng nhập tên của bạn.", 'bg-red-600');
+        showNotification("Vui lòng nhập tên của bạn.");
         return;
     }
     localStorage.setItem('dice_player_name', localPlayerName);
@@ -678,7 +693,7 @@ enterLobbyBtn.addEventListener('click', () => {
                 await signInAnonymously(auth);
             } catch (error) {
                 console.error("Lỗi đăng nhập ẩn danh:", error);
-                showNotification("Không thể kết nối. Vui lòng làm mới trang.", 'bg-red-500');
+                showNotification("Không thể kết nối. Vui lòng làm mới trang.");
                 enterLobbyBtn.textContent = 'Lỗi kết nối';
             }
         }
