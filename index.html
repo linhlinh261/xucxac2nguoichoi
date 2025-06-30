@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trò Chơi Tổng Số Chấm Hai Xúc Xắc </title>
+    <title>Trò Chơi Cược Xúc Xắc 3D (Online với Phòng)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <!-- Three.js for 3D Dice -->
@@ -182,7 +182,6 @@ function showView(view) {
 
 // --- 3D DICE LOGIC (using Three.js) ---
 
-// FIXED: Refactored to be more robust and readable
 function createDiceTexture(n) {
     const canvas = document.createElement('canvas');
     canvas.width = 128; canvas.height = 128;
@@ -226,7 +225,7 @@ function createDiceTexture(n) {
 }
 
 
-function setFinalRotation(group, value) { // Takes a group now
+function setFinalRotation(group, value) {
     const rotations = {
         1: { x: 0, y: 0, z: 0 },
         2: { x: -Math.PI / 2, y: 0, z: 0 },
@@ -318,7 +317,7 @@ function stopAllDiceAnimations() {
 // --- NAVIGATION & ROOM MANAGEMENT ---
 
 async function goToLobby() {
-    stopAllDiceAnimations(); // Clean up 3D scenes
+    stopAllDiceAnimations();
     if (joinTimeout) clearTimeout(joinTimeout);
     if (gameUnsubscribe) gameUnsubscribe();
     gameUnsubscribe = null;
@@ -331,7 +330,7 @@ async function goToLobby() {
 }
 
 async function leaveRoom() {
-    stopAllDiceAnimations(); // Clean up 3D scenes
+    stopAllDiceAnimations();
     if (!currentRoomId || !userId) return goToLobby();
     const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
     try {
@@ -742,37 +741,79 @@ function handleRollingUI() {
     if (myPlayerIndex === 0) setTimeout(rollDice, 2500);
 }
 
-// FIXED: Added explicit Number conversion to prevent potential type issues.
+// FIXED: Refactored rollDice function for clarity and correctness
 async function rollDice() {
-    if (myPlayerIndex !== 0) return;
+    // Only player 0 (the host) should ever roll the dice to prevent conflicts.
+    if (myPlayerIndex !== 0) {
+        return;
+    }
+
     const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
-    await runTransaction(db, async (transaction) => {
-        const roomDoc = await transaction.get(roomRef);
-        if (!roomDoc.exists()) return;
-        const data = roomDoc.data();
-        const players = Array.isArray(data.players) ? [...data.players] : [data.players['0'] || null, data.players['1'] || null];
-        
-        const die1 = Math.floor(Math.random() * 6) + 1;
-        const die2 = Math.floor(Math.random() * 6) + 1;
-        
-        // Ensure the values are treated as numbers before adding
-        const total = Number(die1) + Number(die2);
 
-        let p1Won = players[0]?.bet === total;
-        let p2Won = players[1]?.bet === total;
+    try {
+        await runTransaction(db, async (transaction) => {
+            const roomDoc = await transaction.get(roomRef);
+            if (!roomDoc.exists()) {
+                console.error("Room does not exist in rollDice transaction.");
+                return;
+            }
 
-        players[0] = {...players[0], score: (players[0]?.score||0) + (p1Won ? 1 : 0)};
-        players[1] = {...players[1], score: (players[1]?.score||0) + (p2Won ? 1 : 0)};
-        
-        transaction.update(roomRef, {
-            players,
-            diceFaces: [die1, die2],
-            diceResult: total,
-            status: 'results',
-            roundWinner: p1Won && p2Won ? -1 : (p1Won ? 0 : (p2Won ? 1 : null))
+            // It's good practice to work with a fresh copy of the data.
+            const currentRoomData = roomDoc.data();
+            const players = Array.isArray(currentRoomData.players) 
+                ? JSON.parse(JSON.stringify(currentRoomData.players)) // Deep copy
+                : [currentRoomData.players['0'] || null, currentRoomData.players['1'] || null];
+
+            // 1. Generate dice values.
+            const die1 = Math.floor(Math.random() * 6) + 1;
+            const die2 = Math.floor(Math.random() * 6) + 1;
+            
+            // 2. Calculate the total. This is the critical part.
+            const totalResult = die1 + die2;
+
+            // 3. Determine winners based on the new total.
+            const player1 = players[0];
+            const player2 = players[1];
+
+            const p1Won = player1?.bet === totalResult;
+            const p2Won = player2?.bet === totalResult;
+            
+            // 4. Update scores.
+            if (player1) {
+                player1.score = (player1.score || 0) + (p1Won ? 1 : 0);
+            }
+            if (player2) {
+                player2.score = (player2.score || 0) + (p2Won ? 1 : 0);
+            }
+
+            // 5. Determine the round winner for the next turn.
+            let roundWinner = null;
+            if (p1Won && p2Won) {
+                roundWinner = -1; // Draw
+            } else if (p1Won) {
+                roundWinner = 0;
+            } else if (p2Won) {
+                roundWinner = 1;
+            }
+
+            // 6. Prepare the data payload for the Firestore update.
+            const updatePayload = {
+                players: players,
+                diceFaces: [die1, die2],
+                diceResult: totalResult,
+                status: 'results',
+                roundWinner: roundWinner
+            };
+
+            // 7. Atomically update the document in the transaction.
+            transaction.update(roomRef, updatePayload);
         });
-    });
+    } catch (error) {
+        console.error("Error in rollDice transaction:", error);
+        showNotification("Đã có lỗi xảy ra khi tung xúc xắc!", true);
+    }
 }
+
 
 function handleResultUI(me) {
     gameStatus.textContent = 'Vòng chơi kết thúc!';
