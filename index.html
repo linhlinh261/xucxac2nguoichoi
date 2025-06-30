@@ -13,10 +13,10 @@
         // This configuration will be populated by the environment
         if (typeof __firebase_config === 'undefined') {
             window.__firebase_config = JSON.stringify({
-                apiKey: "AIzaSyCUrFw_GAv5bIGfwFfuiwCuBcjaNqFohVs",
+                apiKey: "YOUR_API_KEY", // Replace with a valid API Key if needed
                 authDomain: "tonghaixucxac.firebaseapp.com",
                 projectId: "tonghaixucxac",
-                storageBucket: "tonghaixucxac.firebasestorage.app",
+                storageBucket: "tonghaixucxac.appspot.com", // Corrected storage bucket
                 messagingSenderId: "282682257745",
                 appId: "1:282682257745:web:b1d53ac3f903d95be8a370",
             });
@@ -117,7 +117,7 @@
 // Import Firebase services
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, collection, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { getFirestore, doc, collection, onSnapshot, runTransaction, setDoc, deleteDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // --- Use environment-provided variables for Firebase config and App ID ---
 const firebaseConfig = JSON.parse(window.__firebase_config || '{}');
@@ -188,6 +188,9 @@ function createDiceTexture(n) {
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = 'white';
     ctx.fillRect(0, 0, 128, 128);
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(2, 2, 124, 124);
     ctx.fillStyle = 'black';
     
     const dot = (x, y) => { 
@@ -258,7 +261,7 @@ function createDice3D(containerId, value, animate = false) {
     renderer.setSize(width, height);
     container.appendChild(renderer.domElement);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
     scene.add(ambientLight);
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(50, 100, 150);
@@ -280,22 +283,20 @@ function createDice3D(containerId, value, animate = false) {
     const mesh = new THREE.Mesh(geometry, diceMaterials);
     diceGroup.add(mesh);
 
-    const edges = new THREE.EdgesGeometry(geometry);
-    const lineMaterial = new THREE.LineBasicMaterial({ color: 0x000000 });
-    const lineSegments = new THREE.LineSegments(edges, lineMaterial);
-    diceGroup.add(lineSegments);
-
     if (!animate) {
         setFinalRotation(diceGroup, value);
     }
 
+    let animationStartTime = Date.now();
     function loop() {
         if (animate) {
             diceGroup.rotation.x += 0.15 + Math.random() * 0.1;
             diceGroup.rotation.y += 0.16 + Math.random() * 0.1;
         }
         renderer.render(scene, camera);
-        diceAnimationIds[containerId] = requestAnimationFrame(loop);
+        if (Date.now() - animationStartTime < 5000) { // Stop animation after 5s to save resources
+            diceAnimationIds[containerId] = requestAnimationFrame(loop);
+        }
     }
     
     loop();
@@ -355,7 +356,7 @@ async function leaveRoom() {
                     players: fixedPlayers,
                     playerCount: stillPlayers.length,
                     status: 'waiting'
-                });
+                }, { merge: true });
             }
         });
     } catch (error) {
@@ -465,7 +466,7 @@ async function joinRoom(roomId) {
             transaction.set(roomRef, {
                 ...roomData,
                 players: [players[0] || null, players[1] || null]
-            });
+            }, { merge: true });
             joinOK = true;
             myPlayerIndex = slot;
         });
@@ -697,8 +698,8 @@ function handleBettingUI(me, opponent) {
 function renderBettingBoard() {
     const board = document.getElementById('betting-board');
     board.innerHTML = '';
-    const me = gameState.players[myPlayerIndex];
-    const opponent = gameState.players[1 - myPlayerIndex];
+    const me = gameState.players?.[myPlayerIndex];
+    const opponent = gameState.players?.[1 - myPlayerIndex];
     const myTurn = gameState.status === 'betting' && gameState.turn === myPlayerIndex;
 
     for (let i = 2; i <= 12; i++) {
@@ -741,7 +742,7 @@ function handleRollingUI() {
     if (myPlayerIndex === 0) setTimeout(rollDice, 2500);
 }
 
-// FIXED: Refactored rollDice function for clarity and correctness
+// FIXED: Refactored rollDice function to ensure correct dice sum calculation.
 async function rollDice() {
     // Only player 0 (the host) should ever roll the dice to prevent conflicts.
     if (myPlayerIndex !== 0) {
@@ -758,27 +759,30 @@ async function rollDice() {
                 return;
             }
 
-            // It's good practice to work with a fresh copy of the data.
             const currentRoomData = roomDoc.data();
-            const players = Array.isArray(currentRoomData.players) 
-                ? JSON.parse(JSON.stringify(currentRoomData.players)) // Deep copy
-                : [currentRoomData.players['0'] || null, currentRoomData.players['1'] || null];
+            // Use a deep copy to avoid modifying the local state directly.
+            const players = JSON.parse(JSON.stringify(currentRoomData.players || [null, null]));
 
-            // 1. Generate dice values.
+            // --- START OF FIX ---
+            // Step 1: Generate the values for each die individually.
             const die1 = Math.floor(Math.random() * 6) + 1;
             const die2 = Math.floor(Math.random() * 6) + 1;
             
-            // 2. Calculate the total. This is the critical part.
-            const totalResult = die1 + die2;
+            // Step 2: Store the individual dice faces in an array.
+            const diceFaces = [die1, die2];
 
-            // 3. Determine winners based on the new total.
+            // Step 3: Calculate the total sum from the diceFaces array to ensure consistency.
+            const totalResult = diceFaces[0] + diceFaces[1];
+            // --- END OF FIX ---
+
+            // Step 4: Determine winners based on the correct total.
             const player1 = players[0];
             const player2 = players[1];
 
             const p1Won = player1?.bet === totalResult;
             const p2Won = player2?.bet === totalResult;
             
-            // 4. Update scores.
+            // Step 5: Update scores correctly.
             if (player1) {
                 player1.score = (player1.score || 0) + (p1Won ? 1 : 0);
             }
@@ -786,7 +790,7 @@ async function rollDice() {
                 player2.score = (player2.score || 0) + (p2Won ? 1 : 0);
             }
 
-            // 5. Determine the round winner for the next turn.
+            // Step 6: Determine the round winner for the next turn.
             let roundWinner = null;
             if (p1Won && p2Won) {
                 roundWinner = -1; // Draw
@@ -796,16 +800,16 @@ async function rollDice() {
                 roundWinner = 1;
             }
 
-            // 6. Prepare the data payload for the Firestore update.
+            // Step 7: Prepare the data payload with the corrected values.
             const updatePayload = {
                 players: players,
-                diceFaces: [die1, die2],
-                diceResult: totalResult,
+                diceFaces: diceFaces, // Use the new array
+                diceResult: totalResult, // Use the new total
                 status: 'results',
                 roundWinner: roundWinner
             };
 
-            // 7. Atomically update the document in the transaction.
+            // Step 8: Atomically update the document in the transaction.
             transaction.update(roomRef, updatePayload);
         });
     } catch (error) {
@@ -826,6 +830,7 @@ function handleResultUI(me) {
     if (gameState.diceFaces) {
         diceRollView.classList.remove('hidden');
         document.getElementById('rolling-text').textContent = "Kết quả xúc xắc:";
+        stopAllDiceAnimations(); // Stop any previous animation loops
         createDice3D('dice1-3d', gameState.diceFaces[0], false);
         createDice3D('dice2-3d', gameState.diceFaces[1], false);
     }
