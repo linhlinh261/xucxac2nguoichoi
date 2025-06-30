@@ -182,22 +182,49 @@ function showView(view) {
 
 // --- 3D DICE LOGIC (using Three.js) ---
 
+// FIXED: Refactored to be more robust and readable
 function createDiceTexture(n) {
     const canvas = document.createElement('canvas');
     canvas.width = 128; canvas.height = 128;
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = 'white';
     ctx.fillRect(0, 0, 128, 128);
-    ctx.fillStyle = '#000';
-    const dot = (x, y) => { ctx.beginPath(); ctx.arc(x, y, 12, 0, 2 * Math.PI); ctx.fill(); };
-    if (n === 1) { dot(64, 64); }
-    if (n === 2) { dot(32, 32); dot(96, 96); }
-    if (n === 3) { dot(32, 32); dot(64, 64); dot(96, 96); }
-    if (n === 4) { dot(32, 32); dot(96, 32); dot(32, 96); dot(96, 96); }
-    if (n === 5) { dot(32, 32); dot(96, 32); dot(64, 64); dot(32, 96); dot(96, 96); }
-    if (n === 6) { dot(32, 32); dot(96, 32); dot(32, 64); dot(96, 64); dot(32, 96); dot(96, 96); }
+    ctx.fillStyle = 'black';
+    
+    const dot = (x, y) => { 
+        ctx.beginPath(); 
+        ctx.arc(x, y, 12, 0, 2 * Math.PI); 
+        ctx.fill(); 
+    };
+
+    const positions = {
+        center: [64, 64],
+        topLeft: [32, 32],
+        topRight: [96, 32],
+        bottomLeft: [32, 96],
+        bottomRight: [96, 96],
+        middleLeft: [32, 64],
+        middleRight: [96, 64],
+    };
+
+    const patterns = {
+        1: ['center'],
+        2: ['topLeft', 'bottomRight'],
+        3: ['topLeft', 'center', 'bottomRight'],
+        4: ['topLeft', 'topRight', 'bottomLeft', 'bottomRight'],
+        5: ['topLeft', 'topRight', 'center', 'bottomLeft', 'bottomRight'],
+        6: ['topLeft', 'topRight', 'middleLeft', 'middleRight', 'bottomLeft', 'bottomRight'],
+    };
+
+    const patternToDraw = patterns[n] || [];
+    patternToDraw.forEach(posKey => {
+        const [x, y] = positions[posKey];
+        dot(x, y);
+    });
+
     return new THREE.CanvasTexture(canvas);
 }
+
 
 function setFinalRotation(group, value) { // Takes a group now
     const rotations = {
@@ -212,16 +239,14 @@ function setFinalRotation(group, value) { // Takes a group now
     group.rotation.set(r.x, r.y, r.z);
 }
 
-// UPDATED: createDice3D function to include edges
 function createDice3D(containerId, value, animate = false) {
-    // Cancel any existing animation for this container
     if (diceAnimationIds[containerId]) {
         cancelAnimationFrame(diceAnimationIds[containerId]);
     }
 
     const container = document.getElementById(containerId);
     if (!container) return;
-    container.innerHTML = ''; // Clear previous renderer
+    container.innerHTML = '';
     
     const width = container.clientWidth;
     const height = container.clientHeight;
@@ -240,7 +265,6 @@ function createDice3D(containerId, value, animate = false) {
     directionalLight.position.set(50, 100, 150);
     scene.add(directionalLight);
 
-    // Create a group to hold the dice body and its outline
     const diceGroup = new THREE.Group();
     scene.add(diceGroup);
 
@@ -255,24 +279,19 @@ function createDice3D(containerId, value, animate = false) {
 
     const geometry = new THREE.BoxGeometry(70, 70, 70);
     const mesh = new THREE.Mesh(geometry, diceMaterials);
-    diceGroup.add(mesh); // Add dice body to the group
+    diceGroup.add(mesh);
 
-    // --- ADDED: Create and add black edges ---
     const edges = new THREE.EdgesGeometry(geometry);
     const lineMaterial = new THREE.LineBasicMaterial({ color: 0x000000 });
     const lineSegments = new THREE.LineSegments(edges, lineMaterial);
-    diceGroup.add(lineSegments); // Add edges to the group
-    // --- END ADDED ---
+    diceGroup.add(lineSegments);
 
-    // Set initial state if not animating
     if (!animate) {
         setFinalRotation(diceGroup, value);
     }
 
-    // A single, continuous loop for both spinning and static states
     function loop() {
         if (animate) {
-            // Rotate the entire group
             diceGroup.rotation.x += 0.15 + Math.random() * 0.1;
             diceGroup.rotation.y += 0.16 + Math.random() * 0.1;
         }
@@ -280,7 +299,7 @@ function createDice3D(containerId, value, animate = false) {
         diceAnimationIds[containerId] = requestAnimationFrame(loop);
     }
     
-    loop(); // Start the loop
+    loop();
 }
 
 function stopAllDiceAnimations() {
@@ -717,13 +736,13 @@ function handleRollingUI() {
     diceRollView.classList.remove('hidden');
     document.getElementById('rolling-text').textContent = "Đang tung xúc xắc...";
     
-    // Start 3D animation
     createDice3D('dice1-3d', 1, true);
     createDice3D('dice2-3d', 1, true);
 
     if (myPlayerIndex === 0) setTimeout(rollDice, 2500);
 }
 
+// FIXED: Added explicit Number conversion to prevent potential type issues.
 async function rollDice() {
     if (myPlayerIndex !== 0) return;
     const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
@@ -735,7 +754,9 @@ async function rollDice() {
         
         const die1 = Math.floor(Math.random() * 6) + 1;
         const die2 = Math.floor(Math.random() * 6) + 1;
-        const total = die1 + die2;
+        
+        // Ensure the values are treated as numbers before adding
+        const total = Number(die1) + Number(die2);
 
         let p1Won = players[0]?.bet === total;
         let p2Won = players[1]?.bet === total;
@@ -764,7 +785,6 @@ function handleResultUI(me) {
     if (gameState.diceFaces) {
         diceRollView.classList.remove('hidden');
         document.getElementById('rolling-text').textContent = "Kết quả xúc xắc:";
-        // Show final 3D dice result
         createDice3D('dice1-3d', gameState.diceFaces[0], false);
         createDice3D('dice2-3d', gameState.diceFaces[1], false);
     }
