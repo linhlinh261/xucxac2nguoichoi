@@ -202,45 +202,42 @@
             if (!currentRoomId || !userId) return goToLobby();
 
             const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
-            try {
-                await runTransaction(db, async (transaction) => {
-                    const roomDoc = await transaction.get(roomRef);
-                    if (!roomDoc.exists()) return;
+          try {
+    await runTransaction(db, async (transaction) => {
+        const roomDoc = await transaction.get(roomRef);
+        if (!roomDoc.exists()) return;
 
-                    let roomData = roomDoc.data();
-                    
-                    let playersArray = roomData.players;
-                    if (playersArray && !Array.isArray(playersArray)) {
-                        playersArray = [playersArray['0'] || null, playersArray['1'] || null];
-                    }
-
-                    if (!playersArray) {
-                        transaction.delete(roomRef);
-                        return;
-                    }
-                    
-                    const newPlayers = playersArray.filter(p => p && p.id !== userId);
-                    
-                    if (newPlayers.length === 0) {
-                        transaction.delete(roomRef);
-                    } else {
-                        const finalPlayers = newPlayers.length === 1 ? [newPlayers[0], null] : [null, null];
-transaction.set(roomRef, {
-    ...roomData,
-    players: finalPlayers,
-    playerCount: newPlayers.length,
-    status: 'waiting'
-});
- )
-            } catch (error) {
-                console.error("Error leaving room: ", error);
-                showNotification("Lỗi khi rời phòng.");
-            } finally {
-                goToLobby();
-            }
+        let roomData = roomDoc.data();
+        let playersArray = roomData.players;
+        if (playersArray && !Array.isArray(playersArray)) {
+            playersArray = [playersArray['0'] || null, playersArray['1'] || null];
         }
-        quitGameBtn.addEventListener('click', leaveRoom);
 
+        if (!playersArray) {
+            transaction.delete(roomRef);
+            return;
+        }
+
+        const newPlayers = playersArray.filter(p => p && p.id !== userId);
+
+        if (newPlayers.length === 0) {
+            transaction.delete(roomRef);
+        } else {
+            const finalPlayers = newPlayers.length === 1 ? [newPlayers[0], null] : [null, null];
+            transaction.set(roomRef, {
+                ...roomData,
+                players: finalPlayers,
+                playerCount: newPlayers.length,
+                status: 'waiting'
+            });
+        }
+    }); 
+} catch (error) {
+    console.error("Error leaving room: ", error);
+    showNotification("Lỗi khi rời phòng.");
+} finally {
+    goToLobby();
+}
         // --- Lobby Logic ---
         function listenToLobby() {
             if (lobbyUnsubscribe) lobbyUnsubscribe();
