@@ -176,7 +176,7 @@ function showView(view) {
     view.classList.remove('hidden');
 }
 
-// --- 3D DICE LOGIC ---
+// ===== BLOCK CODE ĐÃ FIX MAPPING XÚC XẮC 3D =====
 function createDiceTexture(n) {
     const canvas = document.createElement('canvas');
     canvas.width = 128; canvas.height = 128;
@@ -194,12 +194,7 @@ function createDiceTexture(n) {
     return new THREE.CanvasTexture(canvas);
 }
 
-function setFinalRotation(group, value) {
-    const rotations = { 1: { x: 0, y: 0, z: 0 }, 2: { x: -Math.PI / 2, y: 0, z: 0 }, 3: { x: 0, y: Math.PI / 2, z: 0 }, 4: { x: 0, y: -Math.PI / 2, z: 0 }, 5: { x: Math.PI / 2, y: 0, z: 0 }, 6: { x: Math.PI, y: 0, z: 0 } };
-    const r = rotations[value] || rotations[1];
-    group.rotation.set(r.x, r.y, r.z);
-}
-
+// BLOCK QUAN TRỌNG: MAPPING CHUẨN
 function createDice3D(containerId, value, animate = false) {
     if (diceAnimationIds[containerId]) cancelAnimationFrame(diceAnimationIds[containerId]);
     const container = document.getElementById(containerId);
@@ -218,10 +213,34 @@ function createDice3D(containerId, value, animate = false) {
     scene.add(directionalLight);
     const diceGroup = new THREE.Group();
     scene.add(diceGroup);
-    const diceMaterials = [ new THREE.MeshStandardMaterial({ map: createDiceTexture(4) }), new THREE.MeshStandardMaterial({ map: createDiceTexture(3) }), new THREE.MeshStandardMaterial({ map: createDiceTexture(2) }), new THREE.MeshStandardMaterial({ map: createDiceTexture(5) }), new THREE.MeshStandardMaterial({ map: createDiceTexture(1) }), new THREE.MeshStandardMaterial({ map: createDiceTexture(6) }) ];
+
+    // === Mapping theo chuẩn quốc tế:
+    const diceMaterials = [
+        new THREE.MeshStandardMaterial({ map: createDiceTexture(3) }), // +X (right)
+        new THREE.MeshStandardMaterial({ map: createDiceTexture(4) }), // -X (left)
+        new THREE.MeshStandardMaterial({ map: createDiceTexture(2) }), // +Y (top)
+        new THREE.MeshStandardMaterial({ map: createDiceTexture(5) }), // -Y (bottom)
+        new THREE.MeshStandardMaterial({ map: createDiceTexture(1) }), // +Z (front/camera)
+        new THREE.MeshStandardMaterial({ map: createDiceTexture(6) })  // -Z (back)
+    ];
+
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(70, 70, 70), diceMaterials);
     diceGroup.add(mesh);
-    
+
+    function setFinalRotation(group, value) {
+        // Đảm bảo mặt số value sẽ hướng ra phía trước camera
+        const faceRotation = {
+            1: { x: 0, y: 0, z: 0 }, // mặt 1 ra trước
+            2: { x: -Math.PI / 2, y: 0, z: 0 }, // mặt 2 ra trước
+            3: { x: 0, y: Math.PI / 2, z: 0 },  // mặt 3 ra trước
+            4: { x: 0, y: -Math.PI / 2, z: 0 }, // mặt 4 ra trước
+            5: { x: Math.PI / 2, y: 0, z: 0 },  // mặt 5 ra trước
+            6: { x: Math.PI, y: 0, z: 0 }       // mặt 6 ra trước
+        };
+        const r = faceRotation[value] || faceRotation[1];
+        group.rotation.set(r.x, r.y, r.z);
+    }
+
     function loop() {
         if (animate) {
             diceGroup.rotation.x += 0.15 + Math.random() * 0.1;
@@ -230,7 +249,6 @@ function createDice3D(containerId, value, animate = false) {
         renderer.render(scene, camera);
         diceAnimationIds[containerId] = requestAnimationFrame(loop);
     }
-
     if (animate) {
         loop();
     } else {
@@ -247,6 +265,7 @@ function stopAllDiceAnimations() {
         }
     });
 }
+// ===== KẾT THÚC BLOCK FIX =====
 
 // --- NAVIGATION & ROOM MANAGEMENT ---
 async function goToLobby() {
@@ -363,9 +382,6 @@ function listenToGame(roomId) {
     gameUnsubscribe = onSnapshot(roomRef, (docSnap) => {
         if (!docSnap.exists()) { showNotification("Chủ phòng đã rời đi. Quay về sảnh chờ."); goToLobby(); return; }
         
-        // FIX: Use a deep copy of the snapshot data. This prevents race conditions where the
-        // gameState object is mutated by another snapshot event while the UI is still updating
-        // from the previous state, which can cause inconsistencies like showing the wrong dice sum.
         gameState = JSON.parse(JSON.stringify(docSnap.data()));
 
         if (myPlayerIndex === null || myPlayerIndex === -1) {
@@ -551,7 +567,6 @@ async function rollDice() {
             const roomDoc = await transaction.get(roomRef);
             if (!roomDoc.exists()) return;
             
-            // CRITICAL CHECK: Prevent race conditions. Only roll if the status is 'rolling'.
             if (roomDoc.data().status !== 'rolling') {
                 console.warn("RollDice aborted: game status is not 'rolling'.");
                 return;
@@ -601,7 +616,6 @@ function handleResultUI(me) {
 // --- Rematch Logic ---
 playAgainBtn.addEventListener('click', () => updatePlayerState('wantsRematch', true));
 
-// FIXED: Implemented a more robust state reset to prevent data leakage between rounds.
 async function checkAndResetForRematch() {
     if (
         gameState.status === 'results' &&
@@ -616,17 +630,15 @@ async function checkAndResetForRematch() {
             
             const currentData = roomDoc.data();
             
-            // Create a clean state for the new round, preserving only what's needed
             const newGameState = {
                 id: currentData.id,
                 playerCount: currentData.playerCount,
-                players: JSON.parse(JSON.stringify(currentData.players)), // Keep scores
+                players: JSON.parse(JSON.stringify(currentData.players)),
                 status: 'betting',
                 turn: (currentData.roundWinner !== null && currentData.roundWinner !== -1) ? currentData.roundWinner : currentData.rpsWinner,
-                rpsWinner: currentData.rpsWinner // Persist the original RPS winner
+                rpsWinner: currentData.rpsWinner
             };
 
-            // Reset player-specific data for the new round, but keep the score
             if(newGameState.players[0]) { 
                 newGameState.players[0].bet = null; 
                 newGameState.players[0].wantsRematch = false; 
@@ -638,8 +650,6 @@ async function checkAndResetForRematch() {
                 newGameState.players[1].rpsChoice = null; 
             }
             
-            // Overwrite the entire document with the clean state. This removes old fields
-            // like diceResult, diceFaces, and roundWinner implicitly.
             transaction.set(roomRef, newGameState);
         });
     }
