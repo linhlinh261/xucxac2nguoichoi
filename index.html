@@ -362,7 +362,12 @@ function listenToGame(roomId) {
     const roomRef = doc(db, roomsCollectionPath, `room-${roomId}`);
     gameUnsubscribe = onSnapshot(roomRef, (docSnap) => {
         if (!docSnap.exists()) { showNotification("Chủ phòng đã rời đi. Quay về sảnh chờ."); goToLobby(); return; }
-        gameState = docSnap.data();
+        
+        // FIX: Use a deep copy of the snapshot data. This prevents race conditions where the
+        // gameState object is mutated by another snapshot event while the UI is still updating
+        // from the previous state, which can cause inconsistencies like showing the wrong dice sum.
+        gameState = JSON.parse(JSON.stringify(docSnap.data()));
+
         if (myPlayerIndex === null || myPlayerIndex === -1) {
             myPlayerIndex = (gameState.players || []).findIndex(p => p && p.id === userId);
         }
@@ -681,3 +686,4 @@ enterLobbyBtn.addEventListener('click', () => {
 })();
 </script>
 </body>
+</html>
