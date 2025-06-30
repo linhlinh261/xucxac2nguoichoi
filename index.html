@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trò Chơi Tổng Số Chấm Hai Xúc Xắc </title>
+    <title>Trò Chơi Cược Xúc Xắc 3D (Online với Phòng)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <!-- Three.js for 3D Dice -->
@@ -160,7 +160,7 @@ let lobbyUnsubscribe = null;
 let gameUnsubscribe = null;
 let userId;
 let joinTimeout = null;
-let diceAnimationIds = {}; // FIXED: To manage and cancel animation loops
+let diceAnimationIds = {}; // To manage and cancel animation loops
 
 // Firestore collection path using the dynamic App ID
 const roomsCollectionPath = `/artifacts/${appId}/public/data/dice-game-rooms`;
@@ -199,7 +199,7 @@ function createDiceTexture(n) {
     return new THREE.CanvasTexture(canvas);
 }
 
-function setFinalRotation(mesh, value) {
+function setFinalRotation(group, value) { // Takes a group now
     const rotations = {
         1: { x: 0, y: 0, z: 0 },
         2: { x: -Math.PI / 2, y: 0, z: 0 },
@@ -209,10 +209,10 @@ function setFinalRotation(mesh, value) {
         6: { x: Math.PI, y: 0, z: 0 },
     };
     const r = rotations[value] || rotations[1];
-    mesh.rotation.set(r.x, r.y, r.z);
+    group.rotation.set(r.x, r.y, r.z);
 }
 
-// FIXED: Rewritten createDice3D function for robust rendering
+// UPDATED: createDice3D function to include edges
 function createDice3D(containerId, value, animate = false) {
     // Cancel any existing animation for this container
     if (diceAnimationIds[containerId]) {
@@ -240,6 +240,10 @@ function createDice3D(containerId, value, animate = false) {
     directionalLight.position.set(50, 100, 150);
     scene.add(directionalLight);
 
+    // Create a group to hold the dice body and its outline
+    const diceGroup = new THREE.Group();
+    scene.add(diceGroup);
+
     const diceMaterials = [
         new THREE.MeshStandardMaterial({ map: createDiceTexture(4) }), // right
         new THREE.MeshStandardMaterial({ map: createDiceTexture(3) }), // left
@@ -251,18 +255,26 @@ function createDice3D(containerId, value, animate = false) {
 
     const geometry = new THREE.BoxGeometry(70, 70, 70);
     const mesh = new THREE.Mesh(geometry, diceMaterials);
-    scene.add(mesh);
+    diceGroup.add(mesh); // Add dice body to the group
+
+    // --- ADDED: Create and add black edges ---
+    const edges = new THREE.EdgesGeometry(geometry);
+    const lineMaterial = new THREE.LineBasicMaterial({ color: 0x000000 });
+    const lineSegments = new THREE.LineSegments(edges, lineMaterial);
+    diceGroup.add(lineSegments); // Add edges to the group
+    // --- END ADDED ---
 
     // Set initial state if not animating
     if (!animate) {
-        setFinalRotation(mesh, value);
+        setFinalRotation(diceGroup, value);
     }
 
     // A single, continuous loop for both spinning and static states
     function loop() {
         if (animate) {
-            mesh.rotation.x += 0.15 + Math.random() * 0.1;
-            mesh.rotation.y += 0.16 + Math.random() * 0.1;
+            // Rotate the entire group
+            diceGroup.rotation.x += 0.15 + Math.random() * 0.1;
+            diceGroup.rotation.y += 0.16 + Math.random() * 0.1;
         }
         renderer.render(scene, camera);
         diceAnimationIds[containerId] = requestAnimationFrame(loop);
@@ -271,7 +283,6 @@ function createDice3D(containerId, value, animate = false) {
     loop(); // Start the loop
 }
 
-// FIXED: Function to clean up all running animations
 function stopAllDiceAnimations() {
     for (const id in diceAnimationIds) {
         if (diceAnimationIds[id]) {
@@ -279,7 +290,6 @@ function stopAllDiceAnimations() {
             diceAnimationIds[id] = null;
         }
     }
-    // Also clear the container content
     const d1 = document.getElementById('dice1-3d');
     const d2 = document.getElementById('dice2-3d');
     if (d1) d1.innerHTML = '';
@@ -297,7 +307,7 @@ async function goToLobby() {
     myPlayerIndex = null;
     lobbyPlayerName.textContent = localPlayerName;
     showView(lobbyView);
-    renderLobby({}); // Initial render
+    renderLobby({});
     listenToLobby();
 }
 
