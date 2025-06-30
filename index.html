@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trò Chơi Cược Xúc Xắc 3D (Online với Phòng)</title>
+    <title>Trò Chơi Cược Xúc Xắc (Online với Phòng)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     
@@ -163,7 +163,8 @@ let lobbyUnsubscribe = null;
 let gameUnsubscribe = null;
 let userId;
 let joinTimeout = null;
-let isRollingFlag = false; // Flag to prevent multiple roll calls
+let isRollingFlag = false;
+let rollAnimationInterval = null; // Variable for the animation interval
 
 // Firestore collection path
 const roomsCollectionPath = `/artifacts/${appId}/public/data/dice-game-rooms`;
@@ -186,7 +187,7 @@ function showView(view) {
 function draw2DDice(containerId, value) {
     const container = document.getElementById(containerId);
     if (!container) return;
-    container.innerHTML = ''; // Clear previous content
+    container.innerHTML = ''; 
 
     const pipsLayouts = {
         1: [[50, 50]],
@@ -490,32 +491,21 @@ function renderBettingBoard() {
 
 // --- Rolling & Results Stage ---
 function handleRollingUI() {
-    if (isRollingFlag) return; // Prevent re-triggering
+    if (isRollingFlag) return; 
     isRollingFlag = true;
 
     gameStatus.textContent = 'Tất cả đã cược! Chuẩn bị xem kết quả!';
     diceRollView.classList.remove('hidden');
     document.getElementById('rolling-text').textContent = "Đang tung xúc xắc...";
     
-    // Show rolling animation
-    let rollInterval = setInterval(() => {
+    if (rollAnimationInterval) clearInterval(rollAnimationInterval);
+    rollAnimationInterval = setInterval(() => {
         draw2DDice('dice1-2d', Math.floor(Math.random() * 6) + 1);
         draw2DDice('dice2-2d', Math.floor(Math.random() * 6) + 1);
     }, 100);
 
     if (myPlayerIndex === 0) {
-        setTimeout(() => {
-            clearInterval(rollInterval);
-            rollDice();
-        }, 2500);
-    } else {
-        // For player 2, just stop the animation when results are in
-        let unsub = onSnapshot(doc(db, roomsCollectionPath, currentRoomId), (docSnap) => {
-            if(docSnap.data()?.status === 'results') {
-                clearInterval(rollInterval);
-                unsub(); // Unsubscribe to prevent memory leaks
-            }
-        });
+        setTimeout(rollDice, 2500);
     }
 }
 
@@ -551,7 +541,12 @@ async function rollDice() {
 }
 
 function handleResultUI(me) {
-    isRollingFlag = false; // Reset the flag for the next round
+    if (rollAnimationInterval) {
+        clearInterval(rollAnimationInterval);
+        rollAnimationInterval = null;
+    }
+    isRollingFlag = false; 
+
     gameStatus.textContent = 'Vòng chơi kết thúc!';
     resultView.classList.remove('hidden');
     bettingView.classList.remove('hidden'); 
