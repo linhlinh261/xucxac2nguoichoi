@@ -16,7 +16,7 @@
                 apiKey: "AIzaSyCUrFw_GAv5bIGfwFfuiwCuBcjaNqFohVs",
                 authDomain: "tonghaixucxac.firebaseapp.com",
                 projectId: "tonghaixucxac",
-                storageBucket: "tonghaixucxac.appspot.com", // Corrected storage bucket
+                storageBucket: "tonghaixucxac.appspot.com",
                 messagingSenderId: "282682257745",
                 appId: "1:282682257745:web:b1d53ac3f903d95be8a370",
             });
@@ -32,11 +32,7 @@
         @keyframes pulse-green { 0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); } 50% { box-shadow: 0 0 0 10px rgba(74, 222, 128, 0); } }
         #notification-toast { transition: opacity 0.3s, top 0.3s; z-index: 9999; }
         .danger { background-color: #ef4444 !important; color: #fff !important; }
-        /* Canvas for 3D dice should not be interactive by default */
-        #dice1-3d canvas, #dice2-3d canvas {
-            display: block;
-            margin: auto;
-        }
+        #dice1-3d canvas, #dice2-3d canvas { display: block; margin: auto; }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800 flex items-center justify-center min-h-screen p-4">
@@ -117,7 +113,7 @@
 // Import Firebase services
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, collection, onSnapshot, runTransaction, setDoc, deleteDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { getFirestore, doc, collection, onSnapshot, runTransaction, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // --- Use environment-provided variables for Firebase config and App ID ---
 const firebaseConfig = JSON.parse(window.__firebase_config || '{}');
@@ -160,13 +156,12 @@ let lobbyUnsubscribe = null;
 let gameUnsubscribe = null;
 let userId;
 let joinTimeout = null;
-let diceAnimationIds = {}; // To manage and cancel animation loops
+let diceAnimationIds = {};
 
-// Firestore collection path using the dynamic App ID
+// Firestore collection path
 const roomsCollectionPath = `/artifacts/${appId}/public/data/dice-game-rooms`;
 
 // --- UTILITY FUNCTIONS ---
-
 function showNotification(message, danger = false) {
     notificationToast.textContent = message;
     notificationToast.classList.remove('opacity-0');
@@ -180,8 +175,7 @@ function showView(view) {
     view.classList.remove('hidden');
 }
 
-// --- 3D DICE LOGIC (using Three.js) ---
-
+// --- 3D DICE LOGIC ---
 function createDiceTexture(n) {
     const canvas = document.createElement('canvas');
     canvas.width = 128; canvas.height = 128;
@@ -192,138 +186,73 @@ function createDiceTexture(n) {
     ctx.lineWidth = 4;
     ctx.strokeRect(2, 2, 124, 124);
     ctx.fillStyle = 'black';
-    
-    const dot = (x, y) => { 
-        ctx.beginPath(); 
-        ctx.arc(x, y, 12, 0, 2 * Math.PI); 
-        ctx.fill(); 
-    };
-
-    const positions = {
-        center: [64, 64],
-        topLeft: [32, 32],
-        topRight: [96, 32],
-        bottomLeft: [32, 96],
-        bottomRight: [96, 96],
-        middleLeft: [32, 64],
-        middleRight: [96, 64],
-    };
-
-    const patterns = {
-        1: ['center'],
-        2: ['topLeft', 'bottomRight'],
-        3: ['topLeft', 'center', 'bottomRight'],
-        4: ['topLeft', 'topRight', 'bottomLeft', 'bottomRight'],
-        5: ['topLeft', 'topRight', 'center', 'bottomLeft', 'bottomRight'],
-        6: ['topLeft', 'topRight', 'middleLeft', 'middleRight', 'bottomLeft', 'bottomRight'],
-    };
-
-    const patternToDraw = patterns[n] || [];
-    patternToDraw.forEach(posKey => {
-        const [x, y] = positions[posKey];
-        dot(x, y);
-    });
-
+    const dot = (x, y) => { ctx.beginPath(); ctx.arc(x, y, 12, 0, 2 * Math.PI); ctx.fill(); };
+    const positions = { center: [64, 64], topLeft: [32, 32], topRight: [96, 32], bottomLeft: [32, 96], bottomRight: [96, 96], middleLeft: [32, 64], middleRight: [96, 64] };
+    const patterns = { 1: ['center'], 2: ['topLeft', 'bottomRight'], 3: ['topLeft', 'center', 'bottomRight'], 4: ['topLeft', 'topRight', 'bottomLeft', 'bottomRight'], 5: ['topLeft', 'topRight', 'center', 'bottomLeft', 'bottomRight'], 6: ['topLeft', 'topRight', 'middleLeft', 'middleRight', 'bottomLeft', 'bottomRight'] };
+    (patterns[n] || []).forEach(posKey => { const [x, y] = positions[posKey]; dot(x, y); });
     return new THREE.CanvasTexture(canvas);
 }
 
-
 function setFinalRotation(group, value) {
-    const rotations = {
-        1: { x: 0, y: 0, z: 0 },
-        2: { x: -Math.PI / 2, y: 0, z: 0 },
-        3: { x: 0, y: Math.PI / 2, z: 0 },
-        4: { x: 0, y: -Math.PI / 2, z: 0 },
-        5: { x: Math.PI / 2, y: 0, z: 0 },
-        6: { x: Math.PI, y: 0, z: 0 },
-    };
+    const rotations = { 1: { x: 0, y: 0, z: 0 }, 2: { x: -Math.PI / 2, y: 0, z: 0 }, 3: { x: 0, y: Math.PI / 2, z: 0 }, 4: { x: 0, y: -Math.PI / 2, z: 0 }, 5: { x: Math.PI / 2, y: 0, z: 0 }, 6: { x: Math.PI, y: 0, z: 0 } };
     const r = rotations[value] || rotations[1];
     group.rotation.set(r.x, r.y, r.z);
 }
 
 function createDice3D(containerId, value, animate = false) {
-    if (diceAnimationIds[containerId]) {
-        cancelAnimationFrame(diceAnimationIds[containerId]);
-    }
-
+    if (diceAnimationIds[containerId]) cancelAnimationFrame(diceAnimationIds[containerId]);
     const container = document.getElementById(containerId);
     if (!container) return;
     container.innerHTML = '';
-    
-    const width = container.clientWidth;
-    const height = container.clientHeight;
-
+    const width = container.clientWidth, height = container.clientHeight;
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
     camera.position.z = 150;
-
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
     renderer.setSize(width, height);
     container.appendChild(renderer.domElement);
-
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-    scene.add(ambientLight);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(50, 100, 150);
     scene.add(directionalLight);
-
     const diceGroup = new THREE.Group();
     scene.add(diceGroup);
-
-    const diceMaterials = [
-        new THREE.MeshStandardMaterial({ map: createDiceTexture(4) }), // right
-        new THREE.MeshStandardMaterial({ map: createDiceTexture(3) }), // left
-        new THREE.MeshStandardMaterial({ map: createDiceTexture(2) }), // top
-        new THREE.MeshStandardMaterial({ map: createDiceTexture(5) }), // bottom
-        new THREE.MeshStandardMaterial({ map: createDiceTexture(1) }), // front
-        new THREE.MeshStandardMaterial({ map: createDiceTexture(6) }), // back
-    ];
-
-    const geometry = new THREE.BoxGeometry(70, 70, 70);
-    const mesh = new THREE.Mesh(geometry, diceMaterials);
+    const diceMaterials = [ new THREE.MeshStandardMaterial({ map: createDiceTexture(4) }), new THREE.MeshStandardMaterial({ map: createDiceTexture(3) }), new THREE.MeshStandardMaterial({ map: createDiceTexture(2) }), new THREE.MeshStandardMaterial({ map: createDiceTexture(5) }), new THREE.MeshStandardMaterial({ map: createDiceTexture(1) }), new THREE.MeshStandardMaterial({ map: createDiceTexture(6) }) ];
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(70, 70, 70), diceMaterials);
     diceGroup.add(mesh);
-
-    if (!animate) {
-        setFinalRotation(diceGroup, value);
-    }
-
-    let animationStartTime = Date.now();
+    
     function loop() {
         if (animate) {
             diceGroup.rotation.x += 0.15 + Math.random() * 0.1;
             diceGroup.rotation.y += 0.16 + Math.random() * 0.1;
         }
         renderer.render(scene, camera);
-        if (Date.now() - animationStartTime < 5000) { // Stop animation after 5s to save resources
-            diceAnimationIds[containerId] = requestAnimationFrame(loop);
-        }
+        diceAnimationIds[containerId] = requestAnimationFrame(loop);
     }
-    
-    loop();
+
+    if (animate) {
+        loop();
+    } else {
+        setFinalRotation(diceGroup, value);
+        renderer.render(scene, camera);
+    }
 }
 
 function stopAllDiceAnimations() {
-    for (const id in diceAnimationIds) {
+    Object.keys(diceAnimationIds).forEach(id => {
         if (diceAnimationIds[id]) {
             cancelAnimationFrame(diceAnimationIds[id]);
             diceAnimationIds[id] = null;
         }
-    }
-    const d1 = document.getElementById('dice1-3d');
-    const d2 = document.getElementById('dice2-3d');
-    if (d1) d1.innerHTML = '';
-    if (d2) d2.innerHTML = '';
+    });
 }
 
 // --- NAVIGATION & ROOM MANAGEMENT ---
-
 async function goToLobby() {
     stopAllDiceAnimations();
     if (joinTimeout) clearTimeout(joinTimeout);
     if (gameUnsubscribe) gameUnsubscribe();
-    gameUnsubscribe = null;
-    currentRoomId = null;
-    myPlayerIndex = null;
+    gameUnsubscribe = null; currentRoomId = null; myPlayerIndex = null;
     lobbyPlayerName.textContent = localPlayerName;
     showView(lobbyView);
     renderLobby({});
@@ -338,25 +267,14 @@ async function leaveRoom() {
         await runTransaction(db, async (transaction) => {
             const roomDoc = await transaction.get(roomRef);
             if (!roomDoc.exists()) return;
-            
-            let playersData = roomDoc.data().players;
-            let players = Array.isArray(playersData) ? playersData : [playersData['0'] || null, playersData['1'] || null];
-            
+            let players = [...(roomDoc.data().players || [null, null])];
             const idx = players.findIndex(p => p && p.id === userId);
             if (idx !== -1) players[idx] = null;
-            
             const stillPlayers = players.filter(p => p && p.id);
             if (stillPlayers.length === 0) {
                 transaction.delete(roomRef);
             } else {
-                let fixedPlayers = [null, null];
-                if (stillPlayers.length === 1) fixedPlayers = [stillPlayers[0], null];
-                transaction.set(roomRef, {
-                    ...roomDoc.data(),
-                    players: fixedPlayers,
-                    playerCount: stillPlayers.length,
-                    status: 'waiting'
-                }, { merge: true });
+                transaction.set(roomRef, { players: [stillPlayers[0] || null, null], playerCount: stillPlayers.length, status: 'waiting' }, { merge: true });
             }
         });
     } catch (error) {
@@ -369,16 +287,12 @@ async function leaveRoom() {
 quitGameBtn.addEventListener('click', leaveRoom);
 
 // --- LOBBY LOGIC ---
-
 function listenToLobby() {
     if (lobbyUnsubscribe) lobbyUnsubscribe();
     const roomsRef = collection(db, roomsCollectionPath);
     lobbyUnsubscribe = onSnapshot(roomsRef, (snapshot) => {
         const roomsData = {};
-        snapshot.forEach(doc => {
-            const room = doc.data();
-            if(room.id) roomsData[room.id] = room;
-        });
+        snapshot.forEach(doc => { const room = doc.data(); if(room.id) roomsData[room.id] = room; });
         renderLobby(roomsData);
     });
 }
@@ -389,17 +303,11 @@ function renderLobby(roomsData) {
         const room = roomsData[i];
         const btn = document.createElement('button');
         btn.className = 'room-btn p-4 border rounded-lg shadow-sm';
-        let text = '';
-        let statusClass = '';
+        let text = '', statusClass = '';
         if (room && room.playerCount > 0) {
             text = `${room.playerCount} / 2`;
-            if (room.playerCount === 1) {
-                statusClass = 'bg-yellow-100 border-yellow-300';
-                btn.disabled = false;
-            } else {
-                statusClass = 'bg-red-200 border-red-400 text-gray-500';
-                btn.disabled = true;
-            }
+            statusClass = room.playerCount === 1 ? 'bg-yellow-100 border-yellow-300' : 'bg-red-200 border-red-400 text-gray-500';
+            btn.disabled = room.playerCount === 2;
         } else {
             text = 'Trống';
             statusClass = 'bg-green-100 border-green-300 hover:bg-green-200';
@@ -414,64 +322,30 @@ function renderLobby(roomsData) {
 }
 
 async function joinRoom(roomId) {
-    if (!userId) {
-        showNotification("Đang xác thực, vui lòng đợi một lát...");
-        return;
-    }
+    if (!userId) { showNotification("Đang xác thực, vui lòng đợi..."); return; }
     const roomRef = doc(db, roomsCollectionPath, `room-${roomId}`);
     try {
         showView(gameView);
         gameRoomId.textContent = roomId;
         gameStatus.textContent = 'Đang tham gia phòng...';
-        
-        joinTimeout = setTimeout(() => {
-            if (myPlayerIndex === null) {
-                showNotification("Không thể vào phòng. Vui lòng thử lại!", true);
-                goToLobby();
-            }
-        }, 10000);
-
-        let joinOK = false;
+        joinTimeout = setTimeout(() => { if (myPlayerIndex === null) { showNotification("Không thể vào phòng. Vui lòng thử lại!", true); goToLobby(); } }, 10000);
         await runTransaction(db, async (transaction) => {
             const roomDoc = await transaction.get(roomRef);
-            let roomData;
             if (!roomDoc.exists()) {
-                roomData = {
-                    id: roomId,
-                    players: [{ id: userId, name: localPlayerName, score: 0, rpsChoice: null, bet: null, wantsRematch: false }, null],
-                    playerCount: 1,
-                    status: 'waiting',
-                };
-                transaction.set(roomRef, roomData);
-                joinOK = true;
+                const newRoomData = { id: roomId, players: [{ id: userId, name: localPlayerName, score: 0, rpsChoice: null, bet: null, wantsRematch: false }, null], playerCount: 1, status: 'waiting' };
+                transaction.set(roomRef, newRoomData);
                 myPlayerIndex = 0;
-                return;
+            } else {
+                const roomData = roomDoc.data();
+                let players = [...(roomData.players || [null, null])];
+                const slot = players.findIndex(p => !p || !p.id);
+                if (slot === -1) throw new Error("Phòng đã đầy!");
+                players[slot] = { id: userId, name: localPlayerName, score: 0, rpsChoice: null, bet: null, wantsRematch: false };
+                const playerCount = players.filter(p => p && p.id).length;
+                transaction.set(roomRef, { players, playerCount, status: playerCount === 2 ? 'rps' : 'waiting' }, { merge: true });
+                myPlayerIndex = slot;
             }
-            
-            roomData = roomDoc.data();
-            let players = Array.isArray(roomData.players) ? roomData.players : [roomData.players['0'] || null, roomData.players['1'] || null];
-
-            let slot = -1;
-            for (let i = 0; i < 2; ++i) {
-                if (!players[i] || !players[i].id) {
-                    slot = i; break;
-                }
-            }
-            if (slot === -1) throw new Error("Phòng đã đầy!");
-            
-            players[slot] = { id: userId, name: localPlayerName, score: 0, rpsChoice: null, bet: null, wantsRematch: false };
-            roomData.playerCount = players.filter(p => p && p.id).length;
-            if(roomData.playerCount === 2) roomData.status = 'rps';
-            
-            transaction.set(roomRef, {
-                ...roomData,
-                players: [players[0] || null, players[1] || null]
-            }, { merge: true });
-            joinOK = true;
-            myPlayerIndex = slot;
         });
-
-        if (!joinOK) throw new Error("Không thể vào phòng, thử lại.");
         if(lobbyUnsubscribe) lobbyUnsubscribe();
         currentRoomId = roomId;
         listenToGame(roomId);
@@ -482,115 +356,67 @@ async function joinRoom(roomId) {
 }
 
 // --- GAME STATE LISTENER & UI UPDATES ---
-
 function listenToGame(roomId) {
     if (gameUnsubscribe) gameUnsubscribe();
     const roomRef = doc(db, roomsCollectionPath, `room-${roomId}`);
     gameUnsubscribe = onSnapshot(roomRef, (docSnap) => {
-        if (!docSnap.exists()) {
-            showNotification("Chủ phòng đã rời đi. Quay về sảnh chờ.");
-            goToLobby();
-            return;
-        }
+        if (!docSnap.exists()) { showNotification("Chủ phòng đã rời đi. Quay về sảnh chờ."); goToLobby(); return; }
         gameState = docSnap.data();
-        
-        if (gameState.players && !Array.isArray(gameState.players)) {
-            const playersMap = gameState.players;
-            gameState.players = [playersMap['0'] || null, playersMap['1'] || null];
-        }
-
         if (myPlayerIndex === null || myPlayerIndex === -1) {
-            myPlayerIndex = gameState.players.findIndex(p => p && p.id === userId);
+            myPlayerIndex = (gameState.players || []).findIndex(p => p && p.id === userId);
         }
         updateGameUI();
     });
 }
 
 function updateGameUI() {
-    if (!gameState || !gameState.players) {
-        gameStatus.textContent = 'Đang tải dữ liệu phòng...';
-        return;
-    }
-
-    if (myPlayerIndex === -1 || myPlayerIndex === null) {
-        gameStatus.textContent = 'Đang đồng bộ...';
-        return;
-    }
+    if (!gameState || !gameState.players) { gameStatus.textContent = 'Đang tải dữ liệu phòng...'; return; }
+    if (myPlayerIndex === -1 || myPlayerIndex === null) { gameStatus.textContent = 'Đang đồng bộ...'; return; }
     if (joinTimeout) clearTimeout(joinTimeout);
-
-    const opponentIndex = 1 - myPlayerIndex;
     const me = gameState.players[myPlayerIndex];
-    const opponent = gameState.players[opponentIndex];
-    
+    const opponent = gameState.players[1 - myPlayerIndex];
     gameRoomId.textContent = currentRoomId;
-
-    function renderPlayerBox(el, player, isMe) {
-        if (!player) {
-            el.innerHTML = `<h3 class="font-bold text-lg">Đang chờ...</h3>`;
-            return;
-        }
+    const renderPlayerBox = (el, player, isMe) => {
+        if (!player) { el.innerHTML = `<h3 class="font-bold text-lg">Đang chờ...</h3>`; return; }
         const rpsMap = { r: '✊', p: '✋', s: '✂️' };
         let rpsDisplay = '';
         if (player.rpsChoice && gameState.status === 'rps') {
-            if (gameState.players[0]?.rpsChoice && gameState.players[1]?.rpsChoice) {
-                rpsDisplay = `<p class="mt-1">Ra: <span class="text-2xl">${rpsMap[player.rpsChoice]}</span></p>`;
-            } else {
-                rpsDisplay = `<p class="mt-1">Ra: <span class="text-xl font-bold text-gray-500">Đã chọn</span></p>`;
-            }
+            rpsDisplay = (gameState.players[0]?.rpsChoice && gameState.players[1]?.rpsChoice)
+                ? `<p class="mt-1">Ra: <span class="text-2xl">${rpsMap[player.rpsChoice]}</span></p>`
+                : `<p class="mt-1">Ra: <span class="text-xl font-bold text-gray-500">Đã chọn</span></p>`;
         }
-        const displayName = player.name ? (isMe ? player.name + " (Bạn)" : player.name) : (isMe ? "Bạn" : "Đối thủ");
-        el.innerHTML = `
-            <h3 class="text-lg font-bold">${displayName}</h3>
-            <p class="text-2xl font-black text-indigo-600">${Number.isFinite(player.score) ? player.score : 0} Điểm</p>
-            ${player.bet ? `<p class="mt-1">Đã cược: <span class="font-bold text-xl">${player.bet}</span></p>` : ''}
-            ${rpsDisplay}
-        `;
-    }
-
+        const displayName = player.name ? (isMe ? `${player.name} (Bạn)` : player.name) : (isMe ? "Bạn" : "Đối thủ");
+        el.innerHTML = `<h3 class="text-lg font-bold">${displayName}</h3><p class="text-2xl font-black text-indigo-600">${player.score || 0} Điểm</p>${player.bet ? `<p class="mt-1">Đã cược: <span class="font-bold text-xl">${player.bet}</span></p>` : ''}${rpsDisplay}`;
+    };
     renderPlayerBox(player1Info, gameState.players[0], myPlayerIndex === 0);
     renderPlayerBox(player2Info, gameState.players[1], myPlayerIndex === 1);
-
     [rpsView, bettingView, diceRollView, resultView].forEach(v => v.classList.add('hidden'));
-    
     switch(gameState.status) {
-        case 'waiting':
-            gameStatus.textContent = 'Đang chờ người chơi thứ hai...';
-            break;
+        case 'waiting': gameStatus.textContent = 'Đang chờ người chơi thứ hai...'; break;
         case 'rps': handleRPSUI(me, opponent); break;
         case 'betting': handleBettingUI(me, opponent); break;
         case 'rolling': handleRollingUI(); break;
         case 'results': handleResultUI(me); break;
     }
-
     if (gameState.status === 'results' && me?.wantsRematch && opponent?.wantsRematch) {
         checkAndResetForRematch();
     }
 }
 
 // --- GAME LOGIC & STATE UPDATES ---
-
 async function updatePlayerState(key, value) {
-    if (typeof myPlayerIndex !== 'number' || myPlayerIndex < 0 || myPlayerIndex > 1) {
-        showNotification('Lỗi xác định người chơi. Hãy thử vào lại phòng.', true);
-        return;
-    }
+    if (typeof myPlayerIndex !== 'number' || myPlayerIndex < 0) { showNotification('Lỗi xác định người chơi.', true); return; }
     const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
     try {
         await runTransaction(db, async (transaction) => {
             const roomDoc = await transaction.get(roomRef);
             if (!roomDoc.exists()) return;
-            const data = roomDoc.data();
-            const players = Array.isArray(data.players) ? [...data.players] : [data.players['0'] || null, data.players['1'] || null];
-            
-            if (!players[myPlayerIndex]) players[myPlayerIndex] = {}; 
-            
-            players[myPlayerIndex] = {...players[myPlayerIndex], [key]: value};
-            transaction.update(roomRef, { players });
+            let players = [...(roomDoc.data().players || [null, null])];
+            if (!players[myPlayerIndex]) players[myPlayerIndex] = {};
+            players[myPlayerIndex][key] = value;
+            transaction.set(roomRef, { players }, { merge: true });
         });
-    } catch (error) {
-        console.error("Error updating player state:", error);
-        showNotification("Có lỗi khi cập nhật trạng thái.", true);
-    }
+    } catch (error) { console.error("Error updating player state:", error); showNotification("Có lỗi khi cập nhật trạng thái.", true); }
 }
 
 // --- RPS Stage ---
@@ -600,21 +426,16 @@ function handleRPSUI(me, opponent) {
     continueBtn.classList.add('hidden');
     rpsChoices.classList.remove('hidden');
     const rpsMap = { r: 'Búa ✊', p: 'Bao ✋', s: 'Kéo ✂️' };
-
     if (me?.rpsChoice && opponent?.rpsChoice) {
         rpsChoices.classList.add('hidden');
         const winnerId = determineRPSWinner();
         if (winnerId === -1) {
             rpsResultText.innerHTML = `Hòa! Cả hai cùng ra ${rpsMap[me.rpsChoice]}. Chơi lại!`;
-            if (myPlayerIndex === 0) continueBtn.classList.remove('hidden');
-            else gameStatus.textContent = 'Hòa! Đang chờ chủ phòng chơi lại...';
+            if (myPlayerIndex === 0) continueBtn.classList.remove('hidden'); else gameStatus.textContent = 'Hòa! Đang chờ chủ phòng chơi lại...';
         } else {
             const winnerName = gameState.players[winnerId]?.name || `Người chơi ${winnerId + 1}`;
-            const p1Name = gameState.players[0]?.name || 'Người chơi 1';
-            const p2Name = gameState.players[1]?.name || 'Người chơi 2';
-            rpsResultText.innerHTML = `${p1Name} ra ${rpsMap[gameState.players[0].rpsChoice]}, ${p2Name} ra ${rpsMap[gameState.players[1].rpsChoice]}. <br> <span class="text-green-600">${winnerName} thắng và đi trước!</span>`;
-            if (myPlayerIndex === winnerId) continueBtn.classList.remove('hidden');
-            else gameStatus.textContent = `Đang chờ ${winnerName} tiếp tục...`;
+            rpsResultText.innerHTML = `${gameState.players[0]?.name} ra ${rpsMap[gameState.players[0].rpsChoice]}, ${gameState.players[1]?.name} ra ${rpsMap[gameState.players[1].rpsChoice]}. <br> <span class="text-green-600">${winnerName} thắng và đi trước!</span>`;
+            if (myPlayerIndex === winnerId) continueBtn.classList.remove('hidden'); else gameStatus.textContent = `Đang chờ ${winnerName} tiếp tục...`;
         }
     } else if (me?.rpsChoice) {
         gameStatus.textContent = `Đã chọn. Đang chờ ${opponent?.name || 'đối thủ'}...`;
@@ -624,37 +445,31 @@ function handleRPSUI(me, opponent) {
     }
 }
 
-rpsChoices.addEventListener('click', (e) => {
-    const choice = e.target.closest('.rps-choice')?.dataset.choice;
-    if (choice) updatePlayerState('rpsChoice', choice);
-});
+rpsChoices.addEventListener('click', (e) => { const choice = e.target.closest('.rps-choice')?.dataset.choice; if (choice) updatePlayerState('rpsChoice', choice); });
 
 continueBtn.addEventListener('click', async () => {
     const winner = determineRPSWinner();
     const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
     await runTransaction(db, async (transaction) => {
-        const roomDoc = await transaction.get(roomRef);
-        if (!roomDoc.exists()) return;
-        const data = roomDoc.data();
-        const players = Array.isArray(data.players) ? [...data.players] : [data.players['0'] || null, data.players['1'] || null];
-        
         if (winner === -1) {
             if (myPlayerIndex === 0) {
-                players[0] = {...players[0], rpsChoice: null};
-                players[1] = {...players[1], rpsChoice: null};
-                transaction.update(roomRef, { players });
+                const roomDoc = await transaction.get(roomRef);
+                if (!roomDoc.exists()) return;
+                let players = [...(roomDoc.data().players || [null, null])];
+                if(players[0]) players[0].rpsChoice = null;
+                if(players[1]) players[1].rpsChoice = null;
+                transaction.set(roomRef, { players }, { merge: true });
             }
         } else {
             if (myPlayerIndex === winner) {
-                transaction.update(roomRef, { status: 'betting', turn: winner, rpsWinner: winner });
+                transaction.set(roomRef, { status: 'betting', turn: winner, rpsWinner: winner }, { merge: true });
             }
         }
     });
 });
 
 function determineRPSWinner() {
-    const p1c = gameState.players[0]?.rpsChoice;
-    const p2c = gameState.players[1]?.rpsChoice;
+    const p1c = gameState.players[0]?.rpsChoice, p2c = gameState.players[1]?.rpsChoice;
     if (!p1c || !p2c) return null;
     if (p1c === p2c) return -1;
     if ((p1c === 'r' && p2c === 's') || (p1c === 's' && p2c === 'p') || (p1c === 'p' && p2c === 'r')) return 0;
@@ -667,32 +482,19 @@ async function placeBet(number) {
     await runTransaction(db, async (transaction) => {
         const roomDoc = await transaction.get(roomRef);
         if (!roomDoc.exists()) return;
-        const data = roomDoc.data();
-        const players = Array.isArray(data.players) ? [...data.players] : [data.players['0'] || null, data.players['1'] || null];
-        
-        players[myPlayerIndex] = {...players[myPlayerIndex], bet: number};
-        
-        let updateData = { players };
+        let players = [...(roomDoc.data().players || [null, null])];
+        if(players[myPlayerIndex]) players[myPlayerIndex].bet = number;
         const opponentIndex = 1 - myPlayerIndex;
-        
-        if (players[opponentIndex]?.bet !== null && players[opponentIndex]?.bet !== undefined) {
-            updateData.status = 'rolling';
-            updateData.turn = null;
-        } else {
-            updateData.turn = opponentIndex;
-        }
-        transaction.update(roomRef, updateData);
+        const nextStatus = (players[opponentIndex]?.bet !== null && players[opponentIndex]?.bet !== undefined) ? 'rolling' : 'betting';
+        const nextTurn = (nextStatus === 'betting') ? opponentIndex : null;
+        transaction.set(roomRef, { players, status: nextStatus, turn: nextTurn }, { merge: true });
     });
 }
 
 function handleBettingUI(me, opponent) {
     bettingView.classList.remove('hidden');
     renderBettingBoard();
-    if (gameState.turn === myPlayerIndex) {
-        gameStatus.textContent = 'Đến lượt bạn! Hãy chọn một số để cược.';
-    } else {
-        gameStatus.textContent = `Đang chờ ${opponent?.name || 'đối thủ'} đặt cược...`;
-    }
+    gameStatus.textContent = (gameState.turn === myPlayerIndex) ? 'Đến lượt bạn! Hãy chọn một số để cược.' : `Đang chờ ${opponent?.name || 'đối thủ'} đặt cược...`;
 }
 
 function renderBettingBoard() {
@@ -701,31 +503,20 @@ function renderBettingBoard() {
     const me = gameState.players?.[myPlayerIndex];
     const opponent = gameState.players?.[1 - myPlayerIndex];
     const myTurn = gameState.status === 'betting' && gameState.turn === myPlayerIndex;
-
     for (let i = 2; i <= 12; i++) {
         const circle = document.createElement('button');
         circle.textContent = i;
         const opponentBet = opponent?.bet;
         let classes = 'bet-circle w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold border-4 transition ';
-        
         if (i === me?.bet) classes += 'selected-by-me ';
         else if (i === opponentBet) classes += 'selected-by-opponent ';
         else classes += 'bg-white border-gray-300 ';
-
-        if (myTurn && !me?.bet && i !== opponentBet) {
-            classes += 'hover:bg-blue-200 cursor-pointer';
-            circle.disabled = false;
-        } else {
-            classes += 'opacity-70 cursor-not-allowed';
-            circle.disabled = true;
-        }
-
-        if (gameState.status === 'results' && i === gameState.diceResult) {
-            classes += ' correct-guess border-green-400';
-        }
-
+        const canBet = myTurn && !me?.bet && i !== opponentBet;
+        classes += canBet ? 'hover:bg-blue-200 cursor-pointer' : 'opacity-70 cursor-not-allowed';
+        circle.disabled = !canBet;
+        if (gameState.status === 'results' && i === gameState.diceResult) classes += ' correct-guess border-green-400';
         circle.className = classes;
-        if(!circle.disabled) circle.onclick = () => placeBet(i);
+        if (!circle.disabled) circle.onclick = () => placeBet(i);
         board.appendChild(circle);
     }
 }
@@ -735,126 +526,63 @@ function handleRollingUI() {
     gameStatus.textContent = 'Tất cả đã cược! Chuẩn bị xem kết quả!';
     diceRollView.classList.remove('hidden');
     document.getElementById('rolling-text').textContent = "Đang tung xúc xắc...";
-    
+    stopAllDiceAnimations();
     createDice3D('dice1-3d', 1, true);
     createDice3D('dice2-3d', 1, true);
-
     if (myPlayerIndex === 0) setTimeout(rollDice, 2500);
 }
 
-// FIXED: Refactored rollDice function to ensure correct dice sum calculation.
 async function rollDice() {
-    // Only player 0 (the host) should ever roll the dice to prevent conflicts.
-    if (myPlayerIndex !== 0) {
-        return;
-    }
-
+    if (myPlayerIndex !== 0) return;
     const roomRef = doc(db, roomsCollectionPath, `room-${currentRoomId}`);
-
     try {
         await runTransaction(db, async (transaction) => {
             const roomDoc = await transaction.get(roomRef);
-            if (!roomDoc.exists()) {
-                console.error("Room does not exist in rollDice transaction.");
-                return;
-            }
-
-            const currentRoomData = roomDoc.data();
-            // Use a deep copy to avoid modifying the local state directly.
-            const players = JSON.parse(JSON.stringify(currentRoomData.players || [null, null]));
-
-            // --- START OF FIX ---
-            // Step 1: Generate the values for each die individually.
+            if (!roomDoc.exists()) return;
+            const players = JSON.parse(JSON.stringify(roomDoc.data().players || [null, null]));
             const die1 = Math.floor(Math.random() * 6) + 1;
             const die2 = Math.floor(Math.random() * 6) + 1;
-            
-            // Step 2: Store the individual dice faces in an array.
-            const diceFaces = [die1, die2];
-
-            // Step 3: Calculate the total sum from the diceFaces array to ensure consistency.
-            const totalResult = diceFaces[0] + diceFaces[1];
-            // --- END OF FIX ---
-
-            // Step 4: Determine winners based on the correct total.
-            const player1 = players[0];
-            const player2 = players[1];
-
-            const p1Won = player1?.bet === totalResult;
-            const p2Won = player2?.bet === totalResult;
-            
-            // Step 5: Update scores correctly.
-            if (player1) {
-                player1.score = (player1.score || 0) + (p1Won ? 1 : 0);
-            }
-            if (player2) {
-                player2.score = (player2.score || 0) + (p2Won ? 1 : 0);
-            }
-
-            // Step 6: Determine the round winner for the next turn.
+            const totalResult = die1 + die2;
+            const p1Won = players[0]?.bet === totalResult;
+            const p2Won = players[1]?.bet === totalResult;
+            if (players[0]) players[0].score = (players[0].score || 0) + (p1Won ? 1 : 0);
+            if (players[1]) players[1].score = (players[1].score || 0) + (p2Won ? 1 : 0);
             let roundWinner = null;
-            if (p1Won && p2Won) {
-                roundWinner = -1; // Draw
-            } else if (p1Won) {
-                roundWinner = 0;
-            } else if (p2Won) {
-                roundWinner = 1;
-            }
-
-            // Step 7: Prepare the data payload with the corrected values.
-            const updatePayload = {
-                players: players,
-                diceFaces: diceFaces, // Use the new array
-                diceResult: totalResult, // Use the new total
-                status: 'results',
-                roundWinner: roundWinner
-            };
-
-            // Step 8: Atomically update the document in the transaction.
-            transaction.update(roomRef, updatePayload);
+            if (p1Won && p2Won) roundWinner = -1;
+            else if (p1Won) roundWinner = 0;
+            else if (p2Won) roundWinner = 1;
+            const updatePayload = { players, diceFaces: [die1, die2], diceResult: totalResult, status: 'results', roundWinner };
+            transaction.set(roomRef, updatePayload, { merge: true });
         });
-    } catch (error) {
-        console.error("Error in rollDice transaction:", error);
-        showNotification("Đã có lỗi xảy ra khi tung xúc xắc!", true);
-    }
+    } catch (error) { console.error("Error in rollDice transaction:", error); showNotification("Đã có lỗi xảy ra khi tung xúc xắc!", true); }
 }
-
 
 function handleResultUI(me) {
     gameStatus.textContent = 'Vòng chơi kết thúc!';
     resultView.classList.remove('hidden');
     bettingView.classList.remove('hidden'); 
     renderBettingBoard();
-    
     document.getElementById('dice-result-value').textContent = gameState.diceResult;
-    
     if (gameState.diceFaces) {
         diceRollView.classList.remove('hidden');
         document.getElementById('rolling-text').textContent = "Kết quả xúc xắc:";
-        stopAllDiceAnimations(); // Stop any previous animation loops
+        stopAllDiceAnimations();
         createDice3D('dice1-3d', gameState.diceFaces[0], false);
         createDice3D('dice2-3d', gameState.diceFaces[1], false);
     }
-
     const winnerText = document.getElementById('winner-text');
     const winnerId = gameState.roundWinner;
     if (winnerId === null) winnerText.textContent = 'Không ai đoán trúng!';
     else if (winnerId === -1) winnerText.textContent = 'Cả hai người chơi đều đoán trúng! Mỗi người 1 điểm.';
     else winnerText.textContent = `${gameState.players[winnerId]?.name || 'Người chơi'} đã thắng vòng này và được 1 điểm!`;
-
-    if (me?.wantsRematch) {
-        playAgainBtn.textContent = 'Đang chờ đối thủ...';
-        playAgainBtn.disabled = true;
-    } else {
-        playAgainBtn.textContent = 'Chơi Lại';
-        playAgainBtn.disabled = false;
-    }
+    playAgainBtn.textContent = me?.wantsRematch ? 'Đang chờ đối thủ...' : 'Chơi Lại';
+    playAgainBtn.disabled = me?.wantsRematch;
 }
 
 // --- Rematch Logic ---
-playAgainBtn.addEventListener('click', async () => {
-    await updatePlayerState('wantsRematch', true);
-});
+playAgainBtn.addEventListener('click', () => updatePlayerState('wantsRematch', true));
 
+// FIXED: Implemented a more robust state reset to prevent data leakage between rounds.
 async function checkAndResetForRematch() {
     if (
         gameState.status === 'results' &&
@@ -866,50 +594,47 @@ async function checkAndResetForRematch() {
         await runTransaction(db, async (transaction) => {
             const roomDoc = await transaction.get(roomRef);
             if (!roomDoc.exists()) return;
-            const data = roomDoc.data();
-            const players = Array.isArray(data.players) ? [...data.players] : [data.players['0'] || null, data.players['1'] || null];
             
-            players[0] = {...players[0], bet: null, wantsRematch: false, rpsChoice: null};
-            players[1] = {...players[1], bet: null, wantsRematch: false, rpsChoice: null};
+            // Get the entire current game state
+            const newGameState = roomDoc.data();
+
+            // Reset player-specific data for the new round
+            const players = JSON.parse(JSON.stringify(newGameState.players || [null, null]));
+            if(players[0]) { players[0].bet = null; players[0].wantsRematch = false; players[0].rpsChoice = null; }
+            if(players[1]) { players[1].bet = null; players[1].wantsRematch = false; players[1].rpsChoice = null; }
+            newGameState.players = players;
+
+            // Set the state for the next round
+            newGameState.status = 'betting';
+            newGameState.turn = (newGameState.roundWinner !== null && newGameState.roundWinner !== -1) ? newGameState.roundWinner : newGameState.rpsWinner;
             
-            const nextTurn = data.roundWinner !== null && data.roundWinner !== -1 ? data.roundWinner : data.rpsWinner;
+            // Explicitly delete properties from the previous round to ensure a clean state
+            delete newGameState.diceResult;
+            delete newGameState.diceFaces;
+            delete newGameState.roundWinner;
             
-            transaction.update(roomRef, {
-                players,
-                status: 'betting',
-                turn: nextTurn,
-                rpsWinner: nextTurn,
-                diceResult: null,
-                roundWinner: null,
-                diceFaces: null,
-            });
+            // Overwrite the entire document with the clean state for the new round
+            transaction.set(roomRef, newGameState);
         });
     }
 }
 
-// --- APP INITIALIZATION ---
 
+// --- APP INITIALIZATION ---
 enterLobbyBtn.addEventListener('click', () => {
     localPlayerName = playerNameInput.value.trim();
-    if (!localPlayerName) {
-        showNotification("Vui lòng nhập tên của bạn.", true);
-        return;
-    }
+    if (!localPlayerName) { showNotification("Vui lòng nhập tên của bạn.", true); return; }
     localStorage.setItem('dice_player_name', localPlayerName);
     goToLobby();
 });
 
 (async () => {
     const savedName = localStorage.getItem('dice_player_name');
-    if (savedName) {
-        playerNameInput.value = savedName;
-    }
-    
+    if (savedName) playerNameInput.value = savedName;
     enterLobbyBtn.disabled = true;
     enterLobbyBtn.textContent = 'Đang kết nối...';
     enterLobbyBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
     enterLobbyBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
-
     onAuthStateChanged(auth, async (user) => {
         if (user) {
             userId = user.uid;
@@ -931,7 +656,6 @@ enterLobbyBtn.addEventListener('click', () => {
             }
         }
     });
-    
     showView(nameView);
 })();
 </script>
